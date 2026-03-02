@@ -1,0 +1,567 @@
+---
+title: 'Node.js Client'
+description: 'Use sdkgen for server-to-server communication with the Node.js runtime'
+---
+
+## Overview
+
+The Node.js runtime (`@sdkgen/node-runtime`) provides an HTTP client for server-side JavaScript applications. It uses Node's native `http` and `https` modules for optimal performance.
+
+## Installation
+
+Install the Node.js runtime package:
+
+```bash
+npm install @sdkgen/node-runtime
+```
+
+## Basic Usage
+
+### Importing the Client
+
+Your generated API code exports a client class:
+
+```typescript
+import { ApiClient } from './generated/apiClient';
+
+const api = new ApiClient('https://api.example.com');
+```
+
+### Making API Calls
+
+Use the generated type-safe methods:
+
+```typescript
+// Example: Get user
+const user = await api.getUser(null, { id: '123' });
+console.log(user.name, user.email);
+
+// Example: Create resource
+const post = await api.createPost(null, {
+  title: 'Server-side Post',
+  content: 'Created from Node.js',
+  authorId: user.id
+});
+```
+
+<Note>
+  The first parameter is the `Context` object (or `null` for simple use cases). This allows passing request context in server-to-server scenarios.
+</Note>
+
+## SdkgenHttpClient API
+
+The Node.js client is defined in `node-runtime/src/http-client.ts:21`.
+
+### Constructor
+
+```typescript
+class SdkgenHttpClient {
+  constructor(
+    baseUrl: string,
+    astJson: DeepReadonly<AstJson>,
+    errClasses: ErrClasses
+  )
+}
+```
+
+**Parameters:**
+- `baseUrl`: Your API endpoint (supports both HTTP and HTTPS)
+- `astJson`: Generated API schema
+- `errClasses`: Error class mappings
+
+### Properties
+
+#### extra
+
+Map for sending additional metadata with requests:
+
+```typescript
+api.extra.set('authToken', process.env.API_TOKEN);
+api.extra.set('serviceId', 'payment-service');
+api.extra.set('environment', process.env.NODE_ENV);
+```
+
+### Methods
+
+#### makeRequest
+
+```typescript
+async makeRequest(
+  ctx: PartialDeep<Context> | null,
+  functionName: string,
+  args: unknown
+): Promise<any>
+```
+
+**Parameters:**
+- `ctx`: Request context (can be `null` for simple calls)
+- `functionName`: The API function to call
+- `args`: Function arguments
+
+**Example:**
+```typescript
+const result = await api.makeRequest(null, 'getUser', { id: '123' });
+```
+
+## Context Object
+
+The Node.js client supports passing context between services:
+
+### Basic Context
+
+```typescript
+import type { Context } from '@sdkgen/node-runtime';
+
+const ctx: Partial<Context> = {
+  request: {
+    id: 'req-12345',
+    deviceInfo: {
+      id: 'payment-service-1',
+      type: 'node'
+    },
+    extra: {
+      userId: 'user-123',
+      traceId: 'trace-abc'
+    }
+  }
+};
+
+const user = await api.getUser(ctx, { id: '123' });
+```
+
+### Request ID Propagation
+
+When you pass a context with a request ID, the client automatically chains request IDs from `node-runtime/src/http-client.ts:55`:
+
+```typescript
+// Parent request ID: "abc123"
+// Generated request ID: "abc123" + <6-random-bytes>
+requestId: ctx?.request?.id 
+  ? ctx.request.id + randomBytes(6).toString("hex")
+  : randomBytes(16).toString("hex")
+```
+
+This creates a traceable chain of requests across services.
+
+### Context Properties
+
+```typescript
+interface Context {
+  request?: {
+    id?: string;              // Request identifier
+    deviceInfo?: {            // Device/service information
+      id: string;
+      type: string;
+    };
+    extra?: Record<string, unknown>;  // Additional metadata
+  };
+}
+```
+
+## Device Information
+
+Unlike the browser client, the Node.js client sends minimal device info by default from `node-runtime/src/http-client.ts:49`:
+
+```typescript
+deviceInfo: ctx?.request?.deviceInfo ?? { 
+  id: hostname(),  // Server hostname
+  type: "node" 
+}
+```
+
+### Custom Device Info
+
+```typescript
+const ctx = {
+  request: {
+    deviceInfo: {
+      id: 'payment-service-pod-3',
+      type: 'node',
+      version: process.env.APP_VERSION,
+      region: process.env.AWS_REGION
+    }
+  }
+};
+
+await api.processPayment(ctx, { amount: 100 });
+```
+
+## Error Handling
+
+The Node.js client provides the same error handling as the browser client:
+
+### Error Types
+
+```typescript
+import { 
+  Fatal, 
+  SdkgenError, 
+  SdkgenErrorWithData 
+} from '@sdkgen/node-runtime';
+
+// Fatal error class is exported
+class Fatal extends SdkgenError {}
+```
+
+### Handling Errors
+
+```typescript
+try {
+  const result = await api.dangerousOperation(null, { id: '123' });
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error('Validation failed:', error.data);
+  } else if (error instanceof Unauthorized) {
+    console.error('Auth failed - refresh credentials');
+    await refreshServiceCredentials();
+  } else if (error instanceof Fatal) {
+    console.error('Fatal error:', error.message);
+    // Retry logic, circuit breaker, etc.
+  }
+}
+```
+
+### Fatal Error Scenarios
+
+From `node-runtime/src/http-client.ts:86`:
+
+```typescript
+// Connection errors
+reject({ message: `${error}`, type: "Fatal" });
+
+// Request aborted
+reject({ message: "Request aborted", type: "Fatal" });
+
+// JSON parsing errors
+reject({ message: `${error}`, type: "Fatal" });
+```
+
+## HTTP/HTTPS Support
+
+The client automatically selects the appropriate protocol from `node-runtime/src/http-client.ts:70`:
+
+```typescript
+const req = (this.baseUrl.protocol === "http:" 
+  ? httpRequest 
+  : httpsRequest)(options, res => {
+  // Handle response
+});
+```
+
+### Protocol Examples
+
+```typescript
+// HTTPS (production)
+const api = new ApiClient('https://api.example.com');
+
+// HTTP (local development)
+const api = new ApiClient('http://localhost:8000');
+
+// Custom port
+const api = new ApiClient('https://api.example.com:8443');
+```
+
+## Advanced Usage
+
+### Service-to-Service Authentication
+
+```typescript
+import { ApiClient } from './generated/apiClient';
+
+class AuthenticatedClient {
+  private api: ApiClient;
+  private token: string | null = null;
+
+  constructor(baseUrl: string) {
+    this.api = new ApiClient(baseUrl);
+  }
+
+  async initialize() {
+    // Get service token
+    this.token = await this.getServiceToken();
+    this.api.extra.set('authorization', `Bearer ${this.token}`);
+  }
+
+  private async getServiceToken(): Promise<string> {
+    // Fetch from secrets manager, environment, etc.
+    return process.env.SERVICE_TOKEN!;
+  }
+
+  async getUser(id: string) {
+    return this.api.getUser(null, { id });
+  }
+}
+
+// Usage
+const client = new AuthenticatedClient('https://api.example.com');
+await client.initialize();
+const user = await client.getUser('123');
+```
+
+### Request Tracing
+
+Implement distributed tracing across services:
+
+```typescript
+import { randomBytes } from 'crypto';
+
+function createTracedContext(traceId?: string) {
+  return {
+    request: {
+      id: traceId || randomBytes(16).toString('hex'),
+      extra: {
+        timestamp: Date.now(),
+        service: 'my-service',
+        traceId: traceId
+      }
+    }
+  };
+}
+
+// In your route handler
+app.get('/user/:id', async (req, res) => {
+  const traceId = req.headers['x-trace-id'] as string;
+  const ctx = createTracedContext(traceId);
+  
+  try {
+    const user = await api.getUser(ctx, { id: req.params.id });
+    res.json(user);
+  } catch (error) {
+    console.error(`[${traceId}] Error fetching user:`, error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+```
+
+### Retry Logic
+
+Implement automatic retries for transient failures:
+
+```typescript
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  delay = 1000
+): Promise<T> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof Fatal && i < maxRetries - 1) {
+        console.log(`Retry ${i + 1}/${maxRetries} after ${delay}ms`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // Exponential backoff
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
+// Usage
+const user = await withRetry(() => 
+  api.getUser(null, { id: '123' })
+);
+```
+
+### Connection Pooling
+
+For high-throughput scenarios, configure HTTP agent with connection pooling:
+
+```typescript
+import { Agent as HttpAgent } from 'http';
+import { Agent as HttpsAgent } from 'https';
+
+// Note: This requires modifying the generated client
+// to accept an agent option
+
+const httpsAgent = new HttpsAgent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 60000,
+});
+
+// Use in high-throughput services
+// The generated client would need to support this option
+```
+
+## Request Format
+
+Requests are sent as POST with `Content-Type: application/sdkgen`:
+
+```http
+POST / HTTP/1.1
+Host: api.example.com
+Content-Type: application/sdkgen
+
+{
+  "version": 3,
+  "name": "getUser",
+  "requestId": "a1b2c3d4e5f67890abcdef12",
+  "args": {
+    "id": "123"
+  },
+  "deviceInfo": {
+    "id": "server-hostname",
+    "type": "node"
+  },
+  "extra": {
+    "authToken": "service-token-xyz",
+    "traceId": "trace-123"
+  }
+}
+```
+
+## Environment-Specific Configuration
+
+```typescript
+const config = {
+  development: {
+    baseUrl: 'http://localhost:8000',
+    timeout: 30000
+  },
+  staging: {
+    baseUrl: 'https://staging-api.example.com',
+    timeout: 10000
+  },
+  production: {
+    baseUrl: 'https://api.example.com',
+    timeout: 5000
+  }
+};
+
+const env = process.env.NODE_ENV || 'development';
+const api = new ApiClient(config[env].baseUrl);
+
+// Set environment in extra
+api.extra.set('environment', env);
+api.extra.set('version', process.env.APP_VERSION);
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use environment variables">
+    ```typescript
+    const api = new ApiClient(process.env.API_BASE_URL!);
+    api.extra.set('apiKey', process.env.API_KEY!);
+    ```
+  </Accordion>
+  
+  <Accordion title="Implement proper error handling">
+    ```typescript
+    try {
+      return await api.callFunction(ctx, args);
+    } catch (error) {
+      if (error instanceof Fatal) {
+        // Log and retry
+        logger.error('Connection failed', { error, ctx });
+        throw new ServiceUnavailableError();
+      }
+      throw error;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Propagate request context">
+    ```typescript
+    // In Express middleware
+    app.use((req, res, next) => {
+      req.sdkgenContext = {
+        request: {
+          id: req.headers['x-request-id'],
+          extra: {
+            userId: req.user?.id,
+            ip: req.ip
+          }
+        }
+      };
+      next();
+    });
+    
+    // In route handlers
+    const user = await api.getUser(req.sdkgenContext, { id });
+    ```
+  </Accordion>
+  
+  <Accordion title="Create typed client wrappers">
+    ```typescript
+    export class UserService {
+      constructor(private api: ApiClient) {}
+      
+      async getUser(ctx: Context, id: string) {
+        return this.api.getUser(ctx, { id });
+      }
+      
+      async updateUser(ctx: Context, id: string, data: UpdateUserData) {
+        return this.api.updateUser(ctx, { id, ...data });
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Testing
+
+### Mock Client for Tests
+
+```typescript
+import { ApiClient } from './generated/apiClient';
+
+// Mock the client
+jest.mock('./generated/apiClient');
+
+const mockApi = new ApiClient('http://test') as jest.Mocked<ApiClient>;
+mockApi.getUser.mockResolvedValue({
+  id: '123',
+  name: 'Test User',
+  email: 'test@example.com'
+});
+
+// Test your service
+const service = new UserService(mockApi);
+const user = await service.getUser(null, '123');
+expect(user.name).toBe('Test User');
+```
+
+### Integration Tests
+
+```typescript
+import { ApiClient } from './generated/apiClient';
+
+describe('API Integration', () => {
+  const api = new ApiClient(process.env.TEST_API_URL!);
+  
+  beforeAll(() => {
+    api.extra.set('testMode', 'true');
+  });
+  
+  it('should fetch user', async () => {
+    const user = await api.getUser(null, { id: 'test-user' });
+    expect(user).toHaveProperty('id');
+    expect(user).toHaveProperty('name');
+  });
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Server Implementation" icon="server" href="/server/nodejs">
+    Build sdkgen API servers with Node.js
+  </Card>
+  
+  <Card title="Browser Client" icon="globe" href="/client/browser">
+    Use sdkgen in web applications
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation" href="/concepts/errors">
+    Deep dive into error types and handling
+  </Card>
+  
+  <Card title="Context" icon="layer-group" href="/api/node-runtime">
+    Learn more about the Context API
+  </Card>
+</CardGroup>

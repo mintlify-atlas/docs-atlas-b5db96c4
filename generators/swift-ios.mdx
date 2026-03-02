@@ -1,0 +1,677 @@
+---
+title: 'Swift iOS Client Generator'
+description: 'Generate type-safe Swift client code for iOS apps with optional RxSwift support'
+---
+
+The Swift iOS generator creates client code optimized for iOS applications with optional RxSwift reactive extensions.
+
+## Generate Swift client code
+
+<Tabs>
+  <Tab title="Standard">
+    ```bash
+    sdkgen api.sdkgen -o API.swift -t swift_ios
+    ```
+    
+    Generates code with completion handlers.
+  </Tab>
+  <Tab title="RxSwift">
+    ```bash
+    sdkgen api.sdkgen -o API.swift -t rxswift_ios
+    ```
+    
+    Generates code with RxSwift reactive extensions in addition to completion handlers.
+  </Tab>
+</Tabs>
+
+**Targets:**
+- `swift_ios` - Standard completion-based API
+- `rxswift_ios` - With RxSwift extensions
+
+## What gets generated
+
+The Swift generator creates:
+
+- **API class**: Singleton API client
+- **Calls class**: HTTP client with methods for each operation
+- **Structs**: Swift structs for all struct types
+- **Enums**: Swift enums for enum types
+- **Error types**: Type-safe error handling
+- **Result wrapper**: Generic result with success/failure
+- **RxSwift extensions**: Observable-based API (if using `rxswift_ios`)
+
+## Generated code structure
+
+### Imports
+
+```swift
+import Foundation
+import SdkgenRuntime
+
+// For RxSwift target:
+import RxSwift
+import RxCocoa
+```
+
+### Protocol definition
+
+```swift
+protocol APICallsProtocol {
+    func getUser(
+        id: String,
+        timeoutSeconds: TimeInterval?,
+        callback: ((API.Result<User>) -> Void)?
+    )
+    
+    func createUser(
+        name: String,
+        email: String,
+        status: Status,
+        timeoutSeconds: TimeInterval?,
+        callback: ((API.Result<API.NoReply>) -> Void)?
+    )
+    
+    // ... other operations
+}
+```
+
+### API class
+
+```swift
+class API: SdkgenResponse {
+    static var calls = Calls(baseUrl: "")
+    static var baseUrl: String? {
+        didSet {
+            self.calls = Calls(baseUrl: baseUrl ?? "")
+        }
+    }
+    
+    override init() {
+        super.init()
+    }
+    
+    // Enums, structs, and error types...
+}
+```
+
+### Enum definitions
+
+```swift
+enum Status: String, Codable {
+    case active = "active"
+    case inactive = "inactive"
+    case pending = "pending"
+}
+
+enum Role: String, Codable {
+    case admin = "admin"
+    case user = "user"
+    case guest = "guest"
+}
+```
+
+### Struct definitions
+
+```swift
+struct User: Codable {
+    let id: String
+    let name: String
+    let email: String
+    let status: Status
+    let role: Role
+    let createdAt: Date
+    let metadata: [String: Any]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, email, status, role, createdAt, metadata
+    }
+}
+
+struct Post: Codable {
+    let id: String
+    let title: String
+    let content: String
+    let authorId: String
+    let publishedAt: Date?
+}
+```
+
+### Error types
+
+```swift
+enum ErrorType: String {
+    case connection = "Connection"
+    case notFound = "NotFound"
+    case validation = "Validation"
+    case fatal = "Fatal"
+}
+
+class Failure {
+    let message: String
+    let code: String?
+    let type: ErrorType
+    
+    init(message: String, code: String?, type: ErrorType) {
+        self.message = message
+        self.code = code
+        self.type = type
+    }
+}
+
+public enum Result<T> {
+    case success(T)
+    case failure(Failure)
+}
+```
+
+### Calls class
+
+```swift
+public class Calls: SdkgenHttpClient, APICallsProtocol {
+    override init(baseUrl: String) {
+        super.init(baseUrl: baseUrl)
+    }
+    
+    func getUser(
+        id: String,
+        timeoutSeconds: TimeInterval? = nil,
+        callback: ((API.Result<User>) -> Void)? = nil
+    ) {
+        var jsonArgs = [String: Any]()
+        jsonArgs["id"] = id
+        
+        makeRequest(
+            "getUser",
+            jsonArgs,
+            timeoutSeconds,
+            completion: { (value: User) in
+                callback?(API.Result.success(value))
+            },
+            onError: { error in
+                callback?(API.Result.failure(
+                    API.Failure(
+                        message: error.message,
+                        code: error.code,
+                        type: error.type
+                    )
+                ))
+            }
+        )
+    }
+    
+    func createUser(
+        name: String,
+        email: String,
+        status: Status,
+        timeoutSeconds: TimeInterval? = nil,
+        callback: ((API.Result<API.NoReply>) -> Void)? = nil
+    ) {
+        var jsonArgs = [String: Any]()
+        jsonArgs["name"] = name
+        jsonArgs["email"] = email
+        jsonArgs["status"] = status.rawValue
+        
+        makeRequest(
+            "createUser",
+            jsonArgs,
+            timeoutSeconds,
+            completion: { (value: API.NoReply) in
+                callback?(API.Result.success(value))
+            },
+            onError: { error in
+                callback?(API.Result.failure(
+                    API.Failure(
+                        message: error.message,
+                        code: error.code,
+                        type: error.type
+                    )
+                ))
+            }
+        )
+    }
+}
+```
+
+### RxSwift extensions (rxswift_ios only)
+
+```swift
+extension API: ReactiveCompatible {}
+
+extension Reactive where Base: API {
+    func getUser(id: String, timeoutSeconds: TimeInterval? = nil) -> Observable<User> {
+        return Observable.create { observer in
+            API.calls.getUser(
+                id: id,
+                timeoutSeconds: timeoutSeconds,
+                callback: { result in
+                    switch result {
+                    case .success(let value):
+                        observer.onNext(value)
+                        observer.onCompleted()
+                    case .failure(let error):
+                        observer.onError(NSError(
+                            domain: "API",
+                            code: 0,
+                            userInfo: [NSLocalizedDescriptionKey: error.message]
+                        ))
+                    }
+                }
+            )
+            return Disposables.create()
+        }
+    }
+}
+```
+
+## Using the client
+
+### Setup
+
+Configure the API base URL:
+
+```swift
+import UIKit
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        API.baseUrl = "https://api.example.com"
+        return true
+    }
+}
+```
+
+### Basic usage with callbacks
+
+```swift
+import UIKit
+
+class UserViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        API.calls.getUser(
+            id: "123",
+            timeoutSeconds: 10,
+            callback: { result in
+                switch result {
+                case .success(let user):
+                    print("User: \(user.name)")
+                    self.displayUser(user)
+                case .failure(let error):
+                    print("Error: \(error.message)")
+                    self.showError(error.message)
+                }
+            }
+        )
+    }
+}
+```
+
+### Using async/await (iOS 13+)
+
+Wrap the callback-based API with async/await:
+
+```swift
+extension API.Calls {
+    func getUser(id: String) async throws -> User {
+        try await withCheckedThrowingContinuation { continuation in
+            getUser(id: id, timeoutSeconds: nil) { result in
+                switch result {
+                case .success(let user):
+                    continuation.resume(returning: user)
+                case .failure(let error):
+                    continuation.resume(throwing: NSError(
+                        domain: "API",
+                        code: 0,
+                        userInfo: [NSLocalizedDescriptionKey: error.message]
+                    ))
+                }
+            }
+        }
+    }
+}
+
+// Usage
+Task {
+    do {
+        let user = try await API.calls.getUser(id: "123")
+        print("User: \(user.name)")
+    } catch {
+        print("Error: \(error)")
+    }
+}
+```
+
+### Using RxSwift (rxswift_ios target)
+
+```swift
+import RxSwift
+import RxCocoa
+
+class UserViewModel {
+    private let disposeBag = DisposeBag()
+    let user = BehaviorRelay<User?>(value: nil)
+    let error = PublishRelay<String>()
+    
+    func loadUser(id: String) {
+        API.rx.getUser(id: id)
+            .subscribe(
+                onNext: { [weak self] user in
+                    self?.user.accept(user)
+                },
+                onError: { [weak self] error in
+                    self?.error.accept(error.localizedDescription)
+                }
+            )
+            .disposed(by: disposeBag)
+    }
+}
+
+// In view controller
+class UserViewController: UIViewController {
+    private let viewModel = UserViewModel()
+    private let disposeBag = DisposeBag()
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        viewModel.user
+            .compactMap { $0 }
+            .subscribe(onNext: { [weak self] user in
+                self?.displayUser(user)
+            })
+            .disposed(by: disposeBag)
+        
+        viewModel.error
+            .subscribe(onNext: { [weak self] error in
+                self?.showError(error)
+            })
+            .disposed(by: disposeBag)
+        
+        viewModel.loadUser(id: "123")
+    }
+}
+```
+
+## Integration with SwiftUI
+
+### Basic SwiftUI usage
+
+```swift
+import SwiftUI
+
+struct UserView: View {
+    @State private var user: User?
+    @State private var error: String?
+    @State private var isLoading = false
+    
+    let userId: String
+    
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView()
+            } else if let user = user {
+                VStack {
+                    Text(user.name)
+                        .font(.title)
+                    Text(user.email)
+                        .font(.body)
+                }
+            } else if let error = error {
+                Text("Error: \(error)")
+                    .foregroundColor(.red)
+            }
+        }
+        .onAppear {
+            loadUser()
+        }
+    }
+    
+    private func loadUser() {
+        isLoading = true
+        
+        API.calls.getUser(
+            id: userId,
+            timeoutSeconds: nil,
+            callback: { result in
+                isLoading = false
+                switch result {
+                case .success(let user):
+                    self.user = user
+                case .failure(let error):
+                    self.error = error.message
+                }
+            }
+        )
+    }
+}
+```
+
+### ObservableObject pattern
+
+```swift
+import SwiftUI
+import Combine
+
+class UserStore: ObservableObject {
+    @Published var user: User?
+    @Published var isLoading = false
+    @Published var error: String?
+    
+    func loadUser(id: String) {
+        isLoading = true
+        error = nil
+        
+        API.calls.getUser(
+            id: id,
+            timeoutSeconds: nil,
+            callback: { [weak self] result in
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                    switch result {
+                    case .success(let user):
+                        self?.user = user
+                    case .failure(let error):
+                        self?.error = error.message
+                    }
+                }
+            }
+        )
+    }
+}
+
+struct UserView: View {
+    @StateObject private var store = UserStore()
+    let userId: String
+    
+    var body: some View {
+        Group {
+            if store.isLoading {
+                ProgressView()
+            } else if let user = store.user {
+                UserDetailView(user: user)
+            } else if let error = store.error {
+                ErrorView(message: error)
+            }
+        }
+        .onAppear {
+            store.loadUser(id: userId)
+        }
+    }
+}
+```
+
+## Dependencies
+
+Add the sdkgen runtime to your project:
+
+### Swift Package Manager
+
+Add to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(
+        url: "https://github.com/sdkgen/sdkgen-swift-runtime.git",
+        from: "1.0.0"
+    )
+]
+```
+
+### CocoaPods
+
+Add to your `Podfile`:
+
+```ruby
+pod 'SdkgenRuntime', '~> 1.0'
+
+# For RxSwift target:
+pod 'RxSwift', '~> 6.0'
+pod 'RxCocoa', '~> 6.0'
+```
+
+## Type mapping
+
+sdkgen types are mapped to Swift types:
+
+| sdkgen Type | Swift Type |
+|-------------|------------|
+| `string` | `String` |
+| `int` | `Int` |
+| `uint` | `UInt` |
+| `float` | `Double` |
+| `bool` | `Bool` |
+| `date` | `Date` |
+| `datetime` | `Date` |
+| `bytes` | `Data` |
+| `bigint` | `Int64` |
+| `decimal` | `Decimal` |
+| `json` | `[String: Any]` |
+| `void` | `NoReply` |
+| `T?` | `T?` (optional) |
+| `T[]` | `[T]` |
+
+## Features
+
+### Singleton pattern
+
+The API uses a singleton pattern for easy access:
+
+```swift
+API.baseUrl = "https://api.example.com"
+API.calls.getUser(id: "123") { result in
+    // Handle result
+}
+```
+
+### Custom timeout
+
+```swift
+API.calls.getUser(
+    id: "123",
+    timeoutSeconds: 5.0,  // 5 seconds
+    callback: { result in
+        // Handle result
+    }
+)
+```
+
+### Type-safe errors
+
+```swift
+API.calls.getUser(id: "123") { result in
+    switch result {
+    case .success(let user):
+        print(user.name)
+    case .failure(let error):
+        switch error.type {
+        case .notFound:
+            print("User not found")
+        case .validation:
+            print("Invalid request")
+        case .fatal:
+            print("Server error")
+        case .connection:
+            print("Network error")
+        }
+    }
+}
+```
+
+### Codable support
+
+All generated types conform to `Codable` for easy serialization.
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Configure base URL early">
+    Set the base URL in `AppDelegate` or `@main`:
+    ```swift
+    @main
+    struct MyApp: App {
+        init() {
+            API.baseUrl = "https://api.example.com"
+        }
+        
+        var body: some Scene {
+            WindowGroup {
+                ContentView()
+            }
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle errors consistently">
+    Create a centralized error handler:
+    ```swift
+    func handleAPIError(_ error: API.Failure) {
+        let alert = UIAlertController(
+            title: "Error",
+            message: error.message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        // Present alert
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use async/await for modern iOS">
+    For iOS 13+, wrap callbacks with async/await for cleaner code.
+  </Accordion>
+  
+  <Accordion title="Consider RxSwift for complex flows">
+    Use the `rxswift_ios` target for reactive programming:
+    ```swift
+    Observable.zip(
+        API.rx.getUser(id: "123"),
+        API.rx.getUserPosts(userId: "123")
+    )
+    .subscribe(onNext: { user, posts in
+        // Handle combined result
+    })
+    .disposed(by: disposeBag)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="Kotlin Android" icon="android" href="/generators/kotlin-android">
+  Generate Android client code
+</Card>
+
+<Card title="TypeScript" icon="js" href="/generators/typescript">
+  Generate TypeScript client code
+</Card>
+
+</CardGroup>

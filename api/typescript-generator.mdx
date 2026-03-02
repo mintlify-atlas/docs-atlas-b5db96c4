@@ -1,0 +1,141 @@
+---
+title: TypeScript Generator
+description: API reference for the TypeScript code generator
+---
+
+The TypeScript generator creates type-safe client and server code from your API schema. It supports browser clients, Node.js clients, and Node.js servers.
+
+## Installation
+
+```bash
+npm install @sdkgen/typescript-generator
+```
+
+## Functions
+
+### generateBrowserClientSource
+
+Generates TypeScript client code for browser environments.
+
+```typescript
+function generateBrowserClientSource(ast: AstRoot): string
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The parsed API schema from `@sdkgen/parser`
+</ParamField>
+
+**Returns:** Generated TypeScript source code as a string
+
+**Output includes:**
+- Type definitions for all enums and structs
+- Error classes with proper inheritance
+- `ApiClient` class extending `SdkgenHttpClient`
+- Type-safe method signatures for all API operations
+- Embedded AST JSON for runtime validation
+
+**Dependencies:**
+- `@sdkgen/browser-runtime` - Required for `SdkgenHttpClient` and error types
+- `decimal.js-light` - Included if schema uses `decimal` types
+
+### generateNodeClientSource
+
+Generates TypeScript client code for Node.js environments.
+
+```typescript
+function generateNodeClientSource(ast: AstRoot): string
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The parsed API schema from `@sdkgen/parser`
+</ParamField>
+
+**Returns:** Generated TypeScript source code as a string
+
+**Output includes:**
+- Type definitions for all enums and structs
+- Error classes (excluding `Fatal` which is imported)
+- `ApiClient` class with context-aware methods
+- All methods accept a `Context` parameter for request metadata
+- Support for `PartialDeep<Context>` for flexible context passing
+- Embedded AST JSON for runtime validation
+
+**Dependencies:**
+- `@sdkgen/node-runtime` - Required for `SdkgenHttpClient`, `Context`, and error types
+- `type-fest` - For `PartialDeep` utility type
+- `decimal.js` - Included if schema uses `decimal` types
+
+### generateNodeServerSource
+
+Generates TypeScript server code for Node.js environments.
+
+```typescript
+function generateNodeServerSource(ast: AstRoot): string
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The parsed API schema from `@sdkgen/parser`
+</ParamField>
+
+**Returns:** Generated TypeScript source code as a string
+
+**Output includes:**
+- Type definitions for all enums and structs
+- Error classes (excluding `Fatal` which is imported)
+- `ApiConfig<ExtraContextT>` class extending `BaseApiConfig`
+- Function type declarations for all API operations
+- Type-safe operation handlers with `Context & ExtraContextT`
+- Embedded AST JSON for runtime validation
+- Pre-configured `api` instance with empty context type
+
+**Dependencies:**
+- `@sdkgen/node-runtime` - Required for `BaseApiConfig`, `Context`, and error types
+- `decimal.js` - Included if schema uses `decimal` types
+
+## Usage
+
+The TypeScript generator is typically invoked via the sdkgen CLI:
+
+```bash
+# Generate browser client
+sdkgen target.sdkgen -o client.ts -t typescript_web
+
+# Generate Node.js client
+sdkgen target.sdkgen -o client.ts -t typescript_nodeserver
+
+# Generate Node.js server
+sdkgen target.sdkgen -o api.ts -t typescript_nodeclient
+```
+
+## Programmatic Usage
+
+```typescript
+import { parse } from "@sdkgen/parser";
+import {
+  generateBrowserClientSource,
+  generateNodeClientSource,
+  generateNodeServerSource,
+} from "@sdkgen/typescript-generator";
+import { readFileSync } from "fs";
+
+const source = readFileSync("api.sdkgen", "utf-8");
+const ast = parse(source);
+
+// Generate browser client
+const browserClient = generateBrowserClientSource(ast);
+
+// Generate Node.js client
+const nodeClient = generateNodeClientSource(ast);
+
+// Generate Node.js server
+const nodeServer = generateNodeServerSource(ast);
+```
+
+## Type Safety
+
+All generated code is fully type-safe:
+
+- Optional parameters are properly marked with `?`
+- Return types match the schema exactly
+- Custom types (enums, structs) are generated with correct TypeScript syntax
+- Error types include data fields when specified in the schema

@@ -1,0 +1,415 @@
+---
+title: 'C# Server Generator'
+description: 'Generate type-safe C# server code for ASP.NET Core'
+---
+
+The C# server generator creates ASP.NET Core compatible server code from your API definition.
+
+## Generate C# server code
+
+```bash
+sdkgen api.sdkgen -o Api.cs -t csharp_server
+```
+
+**Target:** `csharp_server`
+
+## What gets generated
+
+The C# generator creates:
+
+- **Abstract API class**: Base class with abstract methods for each operation
+- **Type definitions**: Classes for all struct types
+- **Enums**: C# enums for enum types
+- **Error classes**: Exception classes for custom errors
+- **JSON serialization**: Automatic encoding/decoding with System.Text.Json
+- **Runtime validation**: Type checking and validation logic
+
+## Generated code structure
+
+### Namespace and imports
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Numerics;
+using System.Text.Json;
+using System.Threading.Tasks;
+using static Sdkgen.Runtime;
+using static Sdkgen.Context;
+using static Sdkgen.Helpers;
+
+namespace SdkgenGenerated
+{
+    public abstract class Api : BaseApi
+    {
+        // Operations, types, and errors
+    }
+}
+```
+
+### Operation methods
+
+Each API operation becomes a virtual async method:
+
+```csharp
+public virtual Task<User> GetUser(Context ctx, string id)
+{
+    return Task.FromException<User>(
+        new FatalException("Function 'getUser' not implemented.")
+    );
+}
+
+public virtual Task CreateUser(Context ctx, string name, string email)
+{
+    return Task.FromException(
+        new FatalException("Function 'createUser' not implemented.")
+    );
+}
+```
+
+### Type definitions
+
+Struct types become C# classes:
+
+```csharp
+public class User
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public string Email { get; set; }
+    public Status Status { get; set; }
+}
+```
+
+### Enums
+
+Enum types become C# enums:
+
+```csharp
+public enum Status
+{
+    Active,
+    Inactive,
+    Pending
+}
+```
+
+### Error classes
+
+Custom errors become exception classes:
+
+```csharp
+public class NotFoundException : SdkgenException
+{
+    public NotFoundException(string message, Exception? inner = null) 
+        : base("NotFound", message, inner) { }
+}
+
+public class ValidationException : SdkgenException
+{
+    public ValidationException(string message, Exception? inner = null) 
+        : base("Validation", message, inner) { }
+}
+```
+
+### Request dispatcher
+
+The generated class includes an `ExecuteFunction` method that routes requests:
+
+```csharp
+public async Task ExecuteFunction(Context context_, Utf8JsonWriter resultWriter_)
+{
+    switch (context_.Name)
+    {
+        case "getUser":
+            {
+                // Decode arguments
+                JsonElement idJson_;
+                if (!context_.Args.TryGetValue("id", out idJson_))
+                {
+                    throw new FatalException("'getUser().args.id' must be set");
+                }
+                string id;
+                // ... decoding logic ...
+                
+                // Call implementation
+                var result_ = await GetUser(context_, id);
+                
+                // Encode result
+                // ... encoding logic ...
+                return;
+            }
+        // ... other operations ...
+    }
+}
+```
+
+## Implementing the server
+
+Create a class that inherits from the generated API class:
+
+```csharp
+using SdkgenGenerated;
+using System.Threading.Tasks;
+
+public class MyApi : Api
+{
+    private readonly UserRepository _userRepo;
+    
+    public MyApi(UserRepository userRepo)
+    {
+        _userRepo = userRepo;
+    }
+    
+    public override async Task<User> GetUser(Context ctx, string id)
+    {
+        var user = await _userRepo.FindByIdAsync(id);
+        
+        if (user == null)
+        {
+            throw new NotFoundException($"User {id} not found");
+        }
+        
+        return user;
+    }
+    
+    public override async Task CreateUser(Context ctx, string name, string email)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = name,
+            Email = email,
+            Status = Status.Active
+        };
+        
+        await _userRepo.SaveAsync(user);
+    }
+}
+```
+
+## Integration with ASP.NET Core
+
+Integrate the generated API with ASP.NET Core:
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+
+[ApiController]
+[Route("api")]
+public class SdkgenController : ControllerBase
+{
+    private readonly MyApi _api;
+    
+    public SdkgenController(MyApi api)
+    {
+        _api = api;
+    }
+    
+    [HttpPost]
+    public async Task<IActionResult> Execute([FromBody] JsonDocument request)
+    {
+        var context = new Context
+        {
+            Name = request.RootElement.GetProperty("name").GetString(),
+            Args = request.RootElement.GetProperty("args")
+                .EnumerateObject()
+                .ToDictionary(p => p.Name, p => p.Value)
+        };
+        
+        using var stream = new MemoryStream();
+        using var writer = new Utf8JsonWriter(stream);
+        
+        try
+        {
+            await _api.ExecuteFunction(context, writer);
+            writer.Flush();
+            return Ok(stream.ToArray());
+        }
+        catch (SdkgenException ex)
+        {
+            return BadRequest(new { error = ex.Message, type = ex.Type });
+        }
+    }
+}
+```
+
+## Dependencies
+
+You need to install the sdkgen C# runtime package:
+
+```bash
+dotnet add package Sdkgen.Runtime
+```
+
+### Required NuGet packages
+
+- `Sdkgen.Runtime` - Core runtime library
+- `System.Text.Json` - JSON serialization (included in .NET)
+
+## Type mapping
+
+sdkgen types are mapped to C# types:
+
+| sdkgen Type | C# Type |
+|-------------|----------|
+| `string` | `string` |
+| `int` | `int` |
+| `uint` | `uint` |
+| `float` | `double` |
+| `bool` | `bool` |
+| `date` | `DateTime` |
+| `datetime` | `DateTime` |
+| `bytes` | `byte[]` |
+| `bigint` | `BigInteger` |
+| `decimal` | `decimal` |
+| `json` | `JsonElement` |
+| `void` | `void` (Task with no return) |
+| `T?` | `T?` (nullable) |
+| `T[]` | `List<T>` |
+
+## Context object
+
+The `Context` object provides request metadata:
+
+```csharp
+public class Context
+{
+    public string Name { get; set; }  // Operation name
+    public Dictionary<string, JsonElement> Args { get; set; }  // Arguments
+    // Add your custom context properties here
+}
+```
+
+Extend the Context class for your application:
+
+```csharp
+public class MyContext : Context
+{
+    public string UserId { get; set; }
+    public string[] Roles { get; set; }
+    public string IpAddress { get; set; }
+}
+```
+
+## Error handling
+
+### Throwing errors
+
+Throw the generated exception classes:
+
+```csharp
+public override async Task<User> GetUser(Context ctx, string id)
+{
+    if (string.IsNullOrEmpty(id))
+    {
+        throw new ValidationException("User ID is required");
+    }
+    
+    var user = await _userRepo.FindByIdAsync(id);
+    if (user == null)
+    {
+        throw new NotFoundException($"User {id} not found");
+    }
+    
+    return user;
+}
+```
+
+### Fatal errors
+
+Use `FatalException` for unrecoverable errors:
+
+```csharp
+if (!_config.IsValid())
+{
+    throw new FatalException("Invalid configuration");
+}
+```
+
+## Features
+
+### Async/await support
+
+All operations are async by default, using `Task` and `Task<T>`.
+
+### JSON serialization
+
+Automatic serialization and deserialization using `System.Text.Json`.
+
+### Type safety
+
+Full compile-time type checking for arguments and return values.
+
+### Optional parameters
+
+Optional parameters are represented as nullable types:
+
+```csharp
+public virtual Task UpdateUser(Context ctx, string id, string? name, string? email)
+{
+    // name and email are optional
+}
+```
+
+### Embedded AST
+
+The generated class includes the API definition as JSON:
+
+```csharp
+public string GetAstJson() => @"{...}";
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Keep generated code separate">
+    Store generated code in a separate project or folder:
+    ```
+    MyProject/
+      Generated/
+        Api.cs          # Generated code
+      Implementation/
+        MyApi.cs        # Your implementation
+    ```
+  </Accordion>
+  
+  <Accordion title="Use dependency injection">
+    Register your API implementation with the DI container:
+    ```csharp
+    services.AddScoped<UserRepository>();
+    services.AddScoped<MyApi>();
+    ```
+  </Accordion>
+  
+  <Accordion title="Don't modify generated code">
+    Never edit the generated `Api.cs` file. Instead:
+    - Update your `.sdkgen` file
+    - Regenerate the code
+    - Update your implementation class
+  </Accordion>
+  
+  <Accordion title="Add custom middleware">
+    Use ASP.NET Core middleware for cross-cutting concerns:
+    ```csharp
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.UseRateLimiting();
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="TypeScript client" icon="js" href="/generators/typescript">
+  Generate a TypeScript client to call your C# server
+</Card>
+
+<Card title="Dart client" icon="mobile" href="/generators/dart-flutter">
+  Generate a Flutter client for mobile apps
+</Card>
+
+</CardGroup>

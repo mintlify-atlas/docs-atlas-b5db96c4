@@ -1,0 +1,196 @@
+---
+title: F# Generator
+description: API reference for the F# code generator
+---
+
+The F# generator creates functional server-side code for .NET applications from your API schema.
+
+## Installation
+
+```bash
+npm install @sdkgen/fsharp-generator
+```
+
+## Functions
+
+### generateFSharpServerSource
+
+Generates F# server code for .NET environments.
+
+```typescript
+function generateFSharpServerSource(ast: AstRoot): string
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The parsed API schema from `@sdkgen/parser`
+</ParamField>
+
+**Returns:** Generated F# source code as a string
+
+**Output includes:**
+- `SdkgenGenerated` module with recursive types
+- Exception types for all custom errors
+- Type definitions for all enums (discriminated unions)
+- Record types for all structs
+- `Api` class implementing `BaseApi` interface
+- Mutable properties for all API operations
+- `ExecuteFunction` implementation for request routing
+- Embedded AST JSON via `GetAstJson()` method
+
+**Dependencies:**
+- `Sdkgen.Runtime` - Required for `BaseApi`, `Context`, and exception types
+- `System.Text.Json` - For JSON serialization/deserialization
+- `FSharp.Control.Tasks.V2` - For task computation expressions (.NET 5 only)
+
+## Generated Code Structure
+
+### Exception Types
+
+Custom errors become F# exception types:
+
+```fsharp
+type CustomErrorException =
+  inherit SdkgenException
+
+  new(message: string) = {
+    inherit SdkgenException("CustomError", message, null)
+  }
+
+  new(message: string, inner: Exception) = {
+    inherit SdkgenException("CustomError", message, inner)
+  }
+```
+
+### Enum Types
+
+Enums are generated as discriminated unions:
+
+```fsharp
+type Color =
+  | Red
+  | Green
+  | Blue
+```
+
+### Struct Types
+
+Structs become F# record types:
+
+```fsharp
+type User = {
+  id: string
+  name: string
+  email: string option
+}
+```
+
+### API Class
+
+The `Api` class uses mutable properties for operation handlers:
+
+```fsharp
+type Api() =
+  member val GetUser: Context -> {| userId: string |} -> Task<User> =
+    fun _ -> (raise (FatalException("Function 'getUser' not implemented.")))
+    with get, set
+```
+
+## Usage
+
+The F# generator is typically invoked via the sdkgen CLI:
+
+```bash
+sdkgen api.sdkgen -o Generated.fs -t fsharp_server
+```
+
+## Programmatic Usage
+
+```typescript
+import { parse } from "@sdkgen/parser";
+import { generateFSharpServerSource } from "@sdkgen/fsharp-generator";
+import { readFileSync, writeFileSync } from "fs";
+
+const source = readFileSync("api.sdkgen", "utf-8");
+const ast = parse(source);
+
+const fsharpCode = generateFSharpServerSource(ast);
+writeFileSync("Generated.fs", fsharpCode);
+```
+
+## Implementation Example
+
+Implement your API by setting the operation handlers:
+
+```fsharp
+open SdkgenGenerated
+open System.Threading.Tasks
+
+let api = Api()
+
+api.GetUser <- fun ctx args -> task {
+    // Your implementation here
+    let! user = database.FindUser args.userId
+    match user with
+    | Some u -> return u
+    | None -> raise (UserNotFoundException "User not found")
+}
+
+api.CreatePost <- fun ctx args -> task {
+    let post = {
+        id = generateId()
+        title = args.title
+        content = args.content
+        authorId = ctx.UserId
+    }
+    do! database.SavePost post
+    return post
+}
+```
+
+## Operation Signatures
+
+Operations with no arguments:
+```fsharp
+member val OperationName: Context -> Task<ReturnType>
+```
+
+Operations with arguments:
+```fsharp
+member val OperationName: Context -> {| arg1: Type1; arg2: Type2 |} -> Task<ReturnType>
+```
+
+Operations returning void:
+```fsharp
+member val OperationName: Context -> {| args... |} -> Task
+```
+
+## Type Mapping
+
+| sdkgen Type | F# Type |
+|-------------|----------|
+| `string` | `string` |
+| `int` | `int` |
+| `uint` | `uint32` |
+| `float` | `float` |
+| `bool` | `bool` |
+| `bytes` | `byte[]` |
+| `bigint` | `bigint` |
+| `date` | `DateTime` |
+| `datetime` | `DateTime` |
+| `void` | `unit` |
+| Custom struct | Record type |
+| Custom enum | Discriminated union |
+| `T?` | `T option` |
+
+## .NET Compatibility
+
+The generated code includes conditional compilation for .NET 5:
+
+```fsharp
+#if NET5_0
+// TaskBuilder.fs is required for .NET 5
+open FSharp.Control.Tasks.V2.ContextInsensitive
+#endif
+```
+
+For .NET 6+, the native task computation expression is used automatically.

@@ -1,0 +1,316 @@
+---
+title: Swift Generator
+description: API reference for the Swift code generator
+---
+
+The Swift generator creates client code for iOS and macOS applications from your API schema.
+
+## Installation
+
+```bash
+npm install @sdkgen/swift-generator
+```
+
+## Functions
+
+### generateSwiftClientSource
+
+Generates Swift client code for iOS/macOS applications.
+
+```typescript
+function generateSwiftClientSource(
+  ast: AstRoot,
+  withRxExtension: boolean
+): string
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The parsed API schema from `@sdkgen/parser`
+</ParamField>
+
+<ParamField path="withRxExtension" type="boolean" required>
+  Whether to generate RxSwift reactive extensions for all operations
+</ParamField>
+
+**Returns:** Generated Swift source code as a string
+
+**Output includes:**
+- `APICallsProtocol` defining all operation signatures
+- Enum definitions for all enum types
+- Class definitions for all struct types
+- `ErrorType` enum for type-safe error handling
+- `Failure` class for error information
+- `Result<T>` enum for operation results
+- `API.Calls` class extending `SdkgenHttpClient`
+- Completion-based methods for all operations
+- Optional RxSwift reactive extensions (if `withRxExtension` is true)
+
+**Dependencies:**
+- `SdkgenRuntime` - Required for `SdkgenHttpClient` and base types
+- `RxSwift` and `RxCocoa` - Required if generating reactive extensions
+
+## Generated Code Structure
+
+### Protocol Definition
+
+```swift
+protocol APICallsProtocol {
+    func getUser(
+        userId: String,
+        timeoutSeconds: TimeInterval?,
+        callback: ((API.Result<User>) -> Void)?
+    )
+}
+```
+
+### Enum Types
+
+```swift
+enum Color: String, Codable {
+    case red = "red"
+    case green = "green"
+    case blue = "blue"
+}
+```
+
+### Struct Types
+
+Structs become Swift classes:
+
+```swift
+class User: Codable {
+    var id: String
+    var name: String
+    var email: String?
+
+    init(id: String, name: String, email: String?) {
+        self.id = id
+        self.name = name
+        self.email = email
+    }
+}
+```
+
+### Error Handling
+
+```swift
+public class Failure {
+    var message: String
+    var code: ErrorType
+    var type: String
+}
+
+public enum ErrorType: String {
+    case Connection
+    case UserNotFound
+    case Fatal
+}
+
+public enum Result<T> {
+    case success(T)
+    case failure(Failure)
+}
+```
+
+### API Class
+
+```swift
+class API: SdkgenResponse {
+    static var calls = Calls(baseUrl: "")
+    static var baseUrl: String? {
+        didSet {
+            self.calls = Calls(baseUrl: baseUrl ?? "")
+        }
+    }
+
+    public class Calls: SdkgenHttpClient, APICallsProtocol {
+        // Generated methods
+    }
+}
+```
+
+## Usage
+
+The Swift generator is typically invoked via the sdkgen CLI:
+
+```bash
+# Without RxSwift
+sdkgen api.sdkgen -o API.swift -t swift_ios
+
+# With RxSwift
+sdkgen api.sdkgen -o API.swift -t swift_ios --rx
+```
+
+## Programmatic Usage
+
+```typescript
+import { parse } from "@sdkgen/parser";
+import { generateSwiftClientSource } from "@sdkgen/swift-generator";
+import { readFileSync, writeFileSync } from "fs";
+
+const source = readFileSync("api.sdkgen", "utf-8");
+const ast = parse(source);
+
+// Generate without RxSwift
+const swiftCode = generateSwiftClientSource(ast, false);
+
+// Generate with RxSwift
+const swiftCodeWithRx = generateSwiftClientSource(ast, true);
+
+writeFileSync("API.swift", swiftCode);
+```
+
+## Client Usage Example
+
+### Completion-based API
+
+```swift
+import Foundation
+
+class UserService {
+    init() {
+        API.baseUrl = "https://api.example.com"
+    }
+
+    func loadUser(id: String) {
+        API.calls.getUser(
+            userId: id,
+            timeoutSeconds: 30,
+            callback: { result in
+                switch result {
+                case .success(let user):
+                    print("User: \(user.name)")
+                case .failure(let error):
+                    print("Error: \(error.message)")
+                }
+            }
+        )
+    }
+}
+```
+
+### RxSwift-based API
+
+When `withRxExtension` is true, reactive extensions are generated:
+
+```swift
+import RxSwift
+import RxCocoa
+
+class UserService {
+    private let disposeBag = DisposeBag()
+
+    init() {
+        API.baseUrl = "https://api.example.com"
+    }
+
+    func loadUser(id: String) {
+        API.rx.getUser(userId: id, timeoutSeconds: 30)
+            .subscribe(
+                onNext: { user in
+                    print("User: \(user.name)")
+                },
+                onError: { error in
+                    print("Error: \(error)")
+                }
+            )
+            .disposed(by: disposeBag)
+    }
+}
+```
+
+## Method Signatures
+
+### Completion-based
+
+```swift
+func operationName(
+    param1: Type1,
+    param2: Type2,
+    timeoutSeconds: TimeInterval?,
+    callback: ((API.Result<ReturnType>) -> Void)?
+)
+```
+
+### RxSwift-based (when enabled)
+
+```swift
+func operationName(
+    param1: Type1,
+    param2: Type2,
+    timeoutSeconds: TimeInterval?
+) -> Observable<ReturnType>
+```
+
+## Configuring Base URL
+
+Set the base URL before making any API calls:
+
+```swift
+// In AppDelegate or app initialization
+API.baseUrl = "https://api.example.com"
+```
+
+The `Calls` instance is automatically recreated when the base URL changes.
+
+## Error Handling Patterns
+
+### Switching on Error Type
+
+```swift
+API.calls.getUser(userId: id, timeoutSeconds: nil) { result in
+    switch result {
+    case .success(let user):
+        self.handleUser(user)
+    case .failure(let error):
+        switch error.code {
+        case .UserNotFound:
+            self.showError("User not found")
+        case .Connection:
+            self.showError("Connection failed")
+        case .Fatal:
+            self.showError("Server error")
+        default:
+            self.showError(error.message)
+        }
+    }
+}
+```
+
+## Type Mapping
+
+| sdkgen Type | Swift Type |
+|-------------|------------|
+| `string` | `String` |
+| `int` | `Int` |
+| `uint` | `UInt` |
+| `float` | `Double` |
+| `bool` | `Bool` |
+| `bytes` | `Data` |
+| `bigint` | `String` (base 10) |
+| `date` | `Date` |
+| `datetime` | `Date` |
+| `void` | `NoReply` |
+| Custom struct | Generated class |
+| Custom enum | Generated enum |
+| `T?` | `T?` (optional) |
+| `T[]` | `[T]` |
+
+## RxSwift Extensions
+
+When `withRxExtension` is true, the generator adds:
+
+```swift
+extension API: ReactiveCompatible {}
+
+extension Reactive where Base: API {
+    func getUser(
+        userId: String,
+        timeoutSeconds: TimeInterval?
+    ) -> Observable<User> {
+        // Implementation
+    }
+}
+```
+
+This allows using the `API.rx` namespace for reactive operations.

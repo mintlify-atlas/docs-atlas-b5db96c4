@@ -1,0 +1,242 @@
+---
+title: Date and DateTime Handling
+description: Understand the difference between date and datetime types and how they behave
+---
+
+As described in the primitives section, `date` and `datetime` have similar but fundamentally different meanings. Use `datetime` when referring to a point in time, or `date` when referring to a date on the calendar.
+
+## Point in Time: `datetime`
+
+An instantaneous point in time must be the same instant for all observers, regardless of where they are. Because of this, sdkgen always corrects timezone variations for `datetime` values exchanged between client and server.
+
+### How It Works
+
+One party can talk about an instant in time in their local timezone, and the other side will receive exactly the same instant, but converted to their own timezone. This behavior is convenient when exchanging information like the publication date of a post.
+
+```sdkgen
+type Post {
+  id: uuid
+  title: string
+  publishedAt: datetime  // Automatically timezone-aware
+}
+
+fn getPost(id: uuid): Post
+```
+
+### Example Scenario
+
+1. **Server** (in UTC): Stores `2024-03-15T14:30:00Z`
+2. **Client** (in EST): Receives and displays as `2024-03-15T09:30:00-05:00`
+3. Both represent the exact same instant in time
+
+### Important Considerations
+
+<Warning>
+Note that "beginning of day" and "end of day" are different moments in different timezones.
+</Warning>
+
+If you need to work with day boundaries:
+
+```sdkgen
+// Not recommended for timezone-sensitive queries
+fn getOrdersByDay(day: datetime): Order[]
+
+// Better: Use date type
+fn getOrdersByDay(day: date): Order[]
+```
+
+## Date on Calendar: `date`
+
+A specific day on the calendar is the same globally, although it represents a different time interval in each timezone. Dates are passed by sdkgen without any modification.
+
+### Use Cases
+
+This type is useful for:
+- Holidays
+- Birthdays
+- Date ranges in financial reports
+- Any calendar-based information
+
+```sdkgen
+type User {
+  id: uuid
+  name: string
+  birthDate: date  // Calendar date, not timezone-aware
+}
+
+type Report {
+  startDate: date
+  endDate: date
+  revenue: money
+}
+
+fn getFinancialReport(startDate: date, endDate: date): Report
+```
+
+### Implementation Details
+
+Since most programming languages don't have a native type for calendar dates, the same type used for `datetime` is utilized. The time component is set to the beginning of the day in your local timezone.
+
+<Note>
+Remember to handle the time component before using date values, especially when filtering.
+</Note>
+
+### Working with Date Ranges
+
+When filtering by date ranges, consider converting the end date to include the full day:
+
+```typescript
+// Server-side example (TypeScript)
+async function getOrdersByDateRange(startDate: Date, endDate: Date) {
+  // startDate is already at 00:00:00 local time
+  
+  // Option 1: Set endDate to end of day
+  const endOfDay = new Date(endDate);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  // Option 2: Add one day and use less-than comparison
+  const nextDay = new Date(endDate);
+  nextDay.setDate(nextDay.getDate() + 1);
+  
+  // Query with inclusive range
+  return db.orders.find({
+    createdAt: {
+      $gte: startDate,
+      $lt: nextDay  // Exclusive upper bound
+    }
+  });
+}
+```
+
+## Choosing Between `date` and `datetime`
+
+| Use `datetime` for | Use `date` for |
+|-------------------|----------------|
+| Event timestamps | Birthdays |
+| Log entries | Holidays |
+| Message sent times | Appointment days |
+| Last login time | Report periods |
+| Payment processed time | Availability calendars |
+| Any precise moment | Any calendar day |
+
+## Examples
+
+### Event Scheduling
+
+```sdkgen
+type Event {
+  id: uuid
+  name: string
+  startTime: datetime      // Exact start time with timezone
+  endTime: datetime        // Exact end time with timezone
+  displayDate: date        // Calendar date for grouping
+}
+
+@description Get all events on a specific calendar day
+fn getEventsByDate(day: date): Event[]
+
+@description Get all events in a time range
+fn getEventsByTime(start: datetime, end: datetime): Event[]
+```
+
+### User Profile
+
+```sdkgen
+type UserProfile {
+  id: uuid
+  name: string
+  birthDate: date          // Calendar date
+  createdAt: datetime      // Exact registration time
+  lastLoginAt: datetime?   // Last login timestamp
+}
+```
+
+### Financial Records
+
+```sdkgen
+type Transaction {
+  id: uuid
+  amount: money
+  processedAt: datetime    // Exact processing time
+  valueDate: date          // Accounting date
+}
+
+@description Get transactions for a date range (inclusive)
+@arg startDate First day to include
+@arg endDate Last day to include
+fn getTransactions(startDate: date, endDate: date): Transaction[]
+```
+
+## REST API Considerations
+
+When using REST endpoints, dates are formatted according to ISO 8601:
+
+### `datetime` Format
+
+```
+2024-03-15T14:30:00Z
+2024-03-15T09:30:00-05:00
+```
+
+In OpenAPI/Swagger: `type: string, format: date-time`
+
+### `date` Format
+
+```
+2024-03-15
+```
+
+In OpenAPI/Swagger: `type: string, format: date`
+
+### REST Example
+
+```sdkgen
+@rest GET /events?{date}
+fn getEventsByDate(date: date): Event[]
+
+@rest GET /events?{start}&{end}
+fn getEventsByTimeRange(start: datetime, end: datetime): Event[]
+```
+
+Queries:
+```
+GET /events?date=2024-03-15
+GET /events?start=2024-03-15T09:00:00Z&end=2024-03-15T17:00:00Z
+```
+
+## Common Pitfalls
+
+### Using `datetime` for Calendar Dates
+
+```sdkgen
+// Don't do this for calendar-based queries
+fn getHolidays(year: datetime): Holiday[]
+
+// Do this instead
+fn getHolidays(year: int): Holiday[]
+```
+
+### Timezone Issues with `date`
+
+```typescript
+// Problem: Comparing dates directly
+if (userBirthDate === today) { /* ... */ }
+
+// Solution: Compare date components
+if (userBirthDate.toISOString().split('T')[0] === 
+    today.toISOString().split('T')[0]) { /* ... */ }
+```
+
+### Mixing Types
+
+```sdkgen
+type Booking {
+  id: uuid
+  checkInDate: date        // Calendar date
+  checkInTime: datetime?   // Optional specific time
+  checkOutDate: date       // Calendar date
+  checkOutTime: datetime?  // Optional specific time
+}
+```
+
+This allows flexibility: users can specify just dates or exact times when needed.

@@ -1,0 +1,207 @@
+---
+title: CLI Commands
+description: Complete reference for sdkgen CLI commands and options
+---
+
+The sdkgen CLI provides commands for generating SDKs and checking API compatibility.
+
+## Build Command
+
+The build command is the default command and generates SDK code from your API definition files.
+
+### Usage
+
+```bash
+sdkgen [sources...] -o <output> -t <target>
+```
+
+### Options
+
+<ParamField path="sources" type="string[]" required>
+  One or more source `.sdkgen` files to parse. These can be specified as positional arguments.
+  
+  ```bash
+  sdkgen src/api.sdkgen
+  sdkgen src/api.sdkgen src/types.sdkgen
+  ```
+</ParamField>
+
+<ParamField path="-o, --output" type="string" required>
+  The output file path where the generated code will be written.
+  
+  ```bash
+  sdkgen api.sdkgen -o src/generated/api.ts -t typescript_nodeserver
+  ```
+</ParamField>
+
+<ParamField path="-t, --target" type="string" required>
+  The target platform and language for code generation. See [Targets](/cli/targets) for all available options.
+  
+  ```bash
+  sdkgen api.sdkgen -o api.ts -t typescript_nodeserver
+  ```
+</ParamField>
+
+<ParamField path="-h, --help" type="boolean">
+  Display the usage guide with available options and targets.
+  
+  ```bash
+  sdkgen --help
+  ```
+</ParamField>
+
+### Examples
+
+#### Generate a TypeScript Node.js Server
+
+```bash
+sdkgen src/api.sdkgen -o src/api.ts -t typescript_nodeserver
+```
+
+#### Generate a TypeScript Browser Client
+
+```bash
+sdkgen src/api.sdkgen -o src/client.ts -t typescript_web
+```
+
+#### Generate a Flutter/Dart Client
+
+```bash
+sdkgen src/api.sdkgen -o lib/api.dart -t flutter
+```
+
+#### Generate from Multiple Sources
+
+```bash
+sdkgen src/api.sdkgen src/types.sdkgen src/errors.sdkgen \
+  -o src/generated/api.ts \
+  -t typescript_nodeserver
+```
+
+#### Generate a Kotlin Android Client
+
+```bash
+sdkgen src/api.sdkgen -o android/Api.kt -t kotlin_android
+```
+
+### Parser Warnings
+
+When you run the build command, the parser may output warnings about your API definition:
+
+```bash
+sdkgen api.sdkgen -o api.ts -t typescript_nodeserver
+WARNING: Unused type 'OldUserType' defined but never referenced
+```
+
+These warnings help you maintain clean API definitions but don't prevent code generation.
+
+## Compatibility Command
+
+The compatibility command checks for breaking changes between two versions of your API definition.
+
+### Usage
+
+```bash
+sdkgen compatibility --old <old-file> --new <new-file>
+```
+
+Alternatively, you can use positional arguments:
+
+```bash
+sdkgen compatibility <old-file> <new-file>
+```
+
+### Options
+
+<ParamField path="--old" type="string" required>
+  Path to the old version of the API definition file.
+  
+  ```bash
+  sdkgen compatibility --old v1/api.sdkgen --new v2/api.sdkgen
+  ```
+</ParamField>
+
+<ParamField path="--new" type="string" required>
+  Path to the new version of the API definition file.
+  
+  ```bash
+  sdkgen compatibility --old v1/api.sdkgen --new v2/api.sdkgen
+  ```
+</ParamField>
+
+<ParamField path="-h, --help" type="boolean">
+  Display the usage guide for the compatibility command.
+  
+  ```bash
+  sdkgen compatibility --help
+  ```
+</ParamField>
+
+### Examples
+
+#### Check Compatibility Between Versions
+
+```bash
+sdkgen compatibility --old src/api-v1.sdkgen --new src/api-v2.sdkgen
+```
+
+#### Using Positional Arguments
+
+```bash
+sdkgen compatibility src/old.sdkgen src/new.sdkgen
+```
+
+#### Successful Compatibility Check
+
+When there are no breaking changes:
+
+```bash
+$ sdkgen compatibility --old v1.sdkgen --new v2.sdkgen
+No breaking changes.
+```
+
+The command exits with status code 0.
+
+#### Breaking Changes Detected
+
+When breaking changes are found:
+
+```bash
+$ sdkgen compatibility --old v1.sdkgen --new v2.sdkgen
+Removed function 'getUser'
+Changed return type of 'listUsers' from User[] to UserList
+Removed field 'email' from type 'User'
+```
+
+The command exits with status code 1, making it suitable for CI/CD pipelines.
+
+### Use in CI/CD
+
+Integrate compatibility checks into your continuous integration:
+
+```yaml
+# GitHub Actions example
+- name: Check API Compatibility
+  run: |
+    sdkgen compatibility \
+      --old ./api/previous.sdkgen \
+      --new ./api/current.sdkgen
+```
+
+This ensures that API changes don't inadvertently break existing clients.
+
+## Exit Codes
+
+The CLI uses standard exit codes:
+
+- **0** - Success (build completed or no compatibility issues)
+- **1** - Error (missing options, unknown target, or breaking changes detected)
+
+## Getting Help
+
+Display help for any command:
+
+```bash
+sdkgen --help
+sdkgen compatibility --help
+```

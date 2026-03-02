@@ -1,0 +1,20 @@
+---
+title: "FAQ"
+description: "Frequently asked questions about sdkgen"
+---
+
+# Frequently Asked Questions
+
+<Accordion title="TypeError: Class constructor BaseApiConfig cannot be invoked without 'new'">
+  The TypeScript target for Node is pre-compiled and distributed for ES2017, which is already supported by all non-deprecated versions of Node. However, TypeScript by default creates projects for ES5, a version that is only useful when targeting old browsers like Internet Explorer.
+  
+  The simplest fix is to modify your project's `tsconfig.json` to a JavaScript version equal to or greater than ES2017.
+  
+  ```json
+  {
+    "compilerOptions": {
+      "target": "ES2017"
+    }
+  }
+  ```
+</Accordion>

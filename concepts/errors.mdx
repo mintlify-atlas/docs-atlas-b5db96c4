@@ -1,0 +1,509 @@
+---
+title: "Error Handling"
+description: "Define and handle errors in your sdkgen API"
+---
+
+Every API encounters errors - invalid arguments, missing resources, external service failures, and more. sdkgen provides a structured way to define and handle these expected error conditions.
+
+## Error Declaration
+
+Errors are declared in your `.sdkgen` file using the `error` keyword:
+
+```sdkgen
+error InvalidArgument
+error NotFound
+error Unauthorized
+```
+
+## Simple Errors
+
+The most basic error is just a name:
+
+```sdkgen
+error NotFound
+error Unauthorized
+error RateLimitExceeded
+```
+
+These errors can be thrown from your server implementation and will be transmitted to the client along with a free-form text message.
+
+### Example Usage
+
+**API Description:**
+```sdkgen
+error NotFound
+
+type User {
+  id: uuid
+  name: string
+}
+
+fn getUser(id: uuid): User
+```
+
+**Server Implementation (TypeScript):**
+```typescript
+export async function getUser(ctx: Context, args: { id: string }): Promise<User> {
+  const user = await database.users.findById(args.id);
+  
+  if (!user) {
+    throw new NotFoundError("User not found");
+  }
+  
+  return user;
+}
+```
+
+**Client Handling (TypeScript):**
+```typescript
+try {
+  const user = await api.getUser(userId);
+  console.log(user.name);
+} catch (error) {
+  if (error.type === "NotFound") {
+    console.log("User does not exist");
+  }
+}
+```
+
+## Errors with Data
+
+Errors can include additional typed data to provide more context about what went wrong:
+
+```sdkgen
+error InvalidArgument {
+  argumentName: string
+  reason: string
+}
+
+error RetryLater datetime
+```
+
+### Structured Error Data
+
+Error data can be any valid type, including objects:
+
+```sdkgen
+error ValidationError {
+  field: string
+  message: string
+  suggestedValue: string?
+}
+
+error QuotaExceeded {
+  limit: uint
+  current: uint
+  resetAt: datetime
+}
+```
+
+### Using Errors with Data
+
+**API Description:**
+```sdkgen
+error InvalidArgument {
+  argumentName: string
+  reason: string
+}
+
+fn createUser(name: string, email: email, age: uint): User
+```
+
+**Server Implementation:**
+```typescript
+export async function createUser(
+  ctx: Context,
+  args: { name: string; email: string; age: number }
+): Promise<User> {
+  if (args.age < 18) {
+    throw new InvalidArgumentError(
+      "User must be at least 18 years old",
+      {
+        argumentName: "age",
+        reason: "Must be 18 or older"
+      }
+    );
+  }
+  
+  // Create user...
+}
+```
+
+**Client Handling:**
+```typescript
+try {
+  const user = await api.createUser("John", "john@example.com", 15);
+} catch (error) {
+  if (error.type === "InvalidArgument") {
+    console.log(`Invalid ${error.data.argumentName}: ${error.data.reason}`);
+    // Output: Invalid age: Must be 18 or older
+  }
+}
+```
+
+## The Fatal Error
+
+<Warning>
+Every sdkgen API has an implicit `Fatal` error that cannot be explicitly declared.
+</Warning>
+
+The `Fatal` error is automatically generated when:
+- An unexpected exception is thrown in server code
+- An error is thrown that's not defined in the API description
+- A system-level failure occurs
+
+### Fatal Error Best Practices
+
+Ideally, your API should never expose `Fatal` errors to clients. Instead:
+
+1. Define all expected errors in your API description
+2. Catch unexpected errors and convert them to appropriate defined errors
+3. Log `Fatal` errors for investigation
+4. Monitor `Fatal` error rates in production
+
+```typescript
+// ❌ Bad - allows unexpected errors to become Fatal
+export async function getUser(ctx: Context, args: { id: string }): Promise<User> {
+  // If database.users throws an unexpected error, it becomes Fatal
+  return await database.users.findById(args.id);
+}
+
+// ✅ Good - handles errors explicitly
+export async function getUser(ctx: Context, args: { id: string }): Promise<User> {
+  try {
+    const user = await database.users.findById(args.id);
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+    return user;
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      throw error;
+    }
+    // Log unexpected error
+    console.error("Database error:", error);
+    throw new ServiceUnavailableError("Unable to fetch user");
+  }
+}
+```
+
+## Common Error Patterns
+
+<AccordionGroup>
+  <Accordion title="Resource Errors">
+    Errors related to resource existence and access:
+    
+    ```sdkgen
+    error NotFound
+    error AlreadyExists
+    error Gone  // Resource existed but was deleted
+    ```
+    
+    Usage:
+    ```sdkgen
+    fn getUser(id: uuid): User  // Can throw NotFound
+    fn createUser(email: email): User  // Can throw AlreadyExists
+    ```
+  </Accordion>
+
+  <Accordion title="Authentication & Authorization Errors">
+    Errors for security and permissions:
+    
+    ```sdkgen
+    error Unauthenticated  // Not logged in
+    error Unauthorized     // Logged in but lacking permission
+    error InvalidCredentials
+    error SessionExpired
+    ```
+    
+    Usage:
+    ```sdkgen
+    fn login(email: email, password: string): Session
+    fn deleteUser(id: uuid)  // Can throw Unauthorized
+    ```
+  </Accordion>
+
+  <Accordion title="Validation Errors">
+    Errors for input validation:
+    
+    ```sdkgen
+    error InvalidArgument {
+      argumentName: string
+      reason: string
+    }
+    
+    error ValidationError {
+      field: string
+      message: string
+      code: string
+    }
+    
+    error InvalidFormat {
+      field: string
+      expectedFormat: string
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Business Logic Errors">
+    Errors for business rule violations:
+    
+    ```sdkgen
+    error InsufficientFunds {
+      required: money
+      available: money
+    }
+    
+    error OutOfStock {
+      productId: uuid
+      requested: uint
+      available: uint
+    }
+    
+    error InvalidOperation {
+      reason: string
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Rate Limiting Errors">
+    Errors for rate limits and quotas:
+    
+    ```sdkgen
+    error RateLimitExceeded {
+      retryAfter: datetime
+      limit: uint
+    }
+    
+    error QuotaExceeded {
+      quotaType: string
+      limit: uint
+      current: uint
+      resetAt: datetime
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="External Service Errors">
+    Errors from external dependencies:
+    
+    ```sdkgen
+    error ServiceUnavailable {
+      service: string
+      retryAfter: datetime?
+    }
+    
+    error ExternalServiceError {
+      service: string
+      message: string
+    }
+    
+    error Timeout
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Complete Example
+
+```sdkgen
+// Authentication errors
+error InvalidCredentials
+error SessionExpired
+error Unauthorized
+
+// Resource errors
+error NotFound
+error AlreadyExists
+
+// Validation errors
+error InvalidArgument {
+  field: string
+  reason: string
+}
+
+// Business logic errors
+error InsufficientFunds {
+  required: money
+  available: money
+}
+
+error OutOfStock {
+  productId: uuid
+  available: uint
+}
+
+// Rate limiting
+error RateLimitExceeded {
+  retryAfter: datetime
+}
+
+type User {
+  id: uuid
+  email: email
+  balance: money
+}
+
+type Product {
+  id: uuid
+  name: string
+  price: money
+  stock: uint
+}
+
+type Order {
+  id: uuid
+  userId: uuid
+  items: {
+    productId: uuid
+    quantity: uint
+  }[]
+  total: money
+}
+
+// Functions that can throw errors
+fn login(email: email, password: string): User
+  // Can throw: InvalidCredentials
+
+fn getUser(id: uuid): User
+  // Can throw: NotFound, Unauthorized
+
+fn createOrder(items: OrderItem[]): Order
+  // Can throw: OutOfStock, InsufficientFunds, InvalidArgument
+
+fn processPayment(orderId: uuid): bool
+  // Can throw: NotFound, InsufficientFunds, Unauthorized
+```
+
+## Error Handling Best Practices
+
+<AccordionGroup>
+  <Accordion title="Define All Expected Errors">
+    Declare every error condition your API can encounter:
+    
+    ```sdkgen
+    // ✅ Good - all errors declared
+    error NotFound
+    error Unauthorized
+    error InvalidArgument { field: string, reason: string }
+    
+    fn getUser(id: uuid): User
+    fn updateUser(id: uuid, name: string): User
+    ```
+    
+    This allows clients to handle errors appropriately and prevents `Fatal` errors.
+  </Accordion>
+
+  <Accordion title="Use Descriptive Error Names">
+    Error names should clearly indicate what went wrong:
+    
+    ```sdkgen
+    // ✅ Good
+    error InvalidEmail
+    error UserNotFound
+    error InsufficientPermissions
+    
+    // ❌ Avoid
+    error Error1
+    error Bad
+    error Failed
+    ```
+  </Accordion>
+
+  <Accordion title="Include Helpful Error Data">
+    Provide data that helps clients understand and potentially fix the error:
+    
+    ```sdkgen
+    // ✅ Good - includes actionable information
+    error ValidationError {
+      field: string
+      message: string
+      suggestedValue: string?
+    }
+    
+    error RateLimitExceeded {
+      retryAfter: datetime
+      limit: uint
+    }
+    
+    // ❌ Less helpful
+    error ValidationError
+    error RateLimitExceeded
+    ```
+  </Accordion>
+
+  <Accordion title="Group Related Errors">
+    Organize error declarations in your API file:
+    
+    ```sdkgen
+    // Authentication & Authorization
+    error Unauthenticated
+    error Unauthorized
+    error InvalidCredentials
+    
+    // Resource Management
+    error NotFound
+    error AlreadyExists
+    error Gone
+    
+    // Validation
+    error InvalidArgument { field: string, reason: string }
+    error ValidationError { errors: ValidationIssue[] }
+    ```
+  </Accordion>
+
+  <Accordion title="Document Error Conditions">
+    While not part of the `.sdkgen` syntax, comment which errors each function can throw:
+    
+    ```sdkgen
+    // Can throw: NotFound, Unauthorized
+    fn getUser(id: uuid): User
+    
+    // Can throw: InvalidCredentials, RateLimitExceeded
+    fn login(email: email, password: string): Session
+    
+    // Can throw: NotFound, InsufficientFunds, OutOfStock
+    fn createOrder(items: OrderItem[]): Order
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Client-Side Error Handling
+
+Clients should handle both specific errors and unexpected cases:
+
+```typescript
+try {
+  const user = await api.getUser(userId);
+  displayUser(user);
+} catch (error) {
+  switch (error.type) {
+    case "NotFound":
+      showMessage("User not found");
+      break;
+    case "Unauthorized":
+      redirectToLogin();
+      break;
+    case "RateLimitExceeded":
+      showMessage(`Try again after ${error.data.retryAfter}`);
+      break;
+    case "Fatal":
+      logError(error);
+      showMessage("An unexpected error occurred");
+      break;
+    default:
+      // Handle unknown errors
+      showMessage("An error occurred");
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Functions" icon="function" href="/concepts/functions">
+    Learn how to define API functions
+  </Card>
+  <Card title="Type System" icon="shapes" href="/concepts/types">
+    Review types for error data
+  </Card>
+</CardGroup>

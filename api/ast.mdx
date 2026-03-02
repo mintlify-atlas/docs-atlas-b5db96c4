@@ -1,0 +1,633 @@
+---
+title: AST API
+description: API reference for sdkgen Abstract Syntax Tree (AST) node types
+---
+
+## Overview
+
+The AST (Abstract Syntax Tree) represents the parsed structure of an sdkgen schema. All AST nodes inherit from `AstNode` and include location information for error reporting.
+
+## Root Node
+
+### AstRoot
+
+The root node of the AST containing all type definitions, operations, and errors.
+
+```typescript
+class AstRoot {
+  typeDefinitions: TypeDefinition[];
+  operations: FunctionOperation[];
+  errors: ErrorNode[];
+  structTypes: StructType[];
+  enumTypes: EnumType[];
+  warnings: string[];
+}
+```
+
+<ParamField path="typeDefinitions" type="TypeDefinition[]" default="[]">
+  All custom type definitions in the schema
+</ParamField>
+
+<ParamField path="operations" type="FunctionOperation[]" default="[]">
+  All function/operation definitions
+</ParamField>
+
+<ParamField path="errors" type="ErrorNode[]" default="[]">
+  All error definitions
+</ParamField>
+
+<ParamField path="structTypes" type="StructType[]" default="[]">
+  Extracted struct types (populated during semantic analysis)
+</ParamField>
+
+<ParamField path="enumTypes" type="EnumType[]" default="[]">
+  Extracted enum types (populated during semantic analysis)
+</ParamField>
+
+<ParamField path="warnings" type="string[]" default="[]">
+  Parser warnings
+</ParamField>
+
+## Base Classes
+
+### AstNode
+
+Base class for all AST nodes.
+
+```typescript
+abstract class AstNode {
+  location: TokenLocation;
+  
+  at(token: Token): this;
+  atLocation(location: TokenLocation): this;
+}
+```
+
+<ParamField path="location" type="TokenLocation">
+  Source location of this node (file, line, column)
+</ParamField>
+
+#### Methods
+
+**at(token: Token): this**
+
+Sets the location from a token and returns `this` for chaining.
+
+**atLocation(location: TokenLocation): this**
+
+Sets the location directly and returns `this` for chaining.
+
+### Type
+
+Base class for all type nodes.
+
+```typescript
+abstract class Type extends AstNode {
+  abstract get name(): string;
+}
+```
+
+<ParamField path="name" type="string">
+  The string representation of the type (e.g., `"string"`, `"User"`, `"int[]"`, `"uuid?"`)
+</ParamField>
+
+## Type Definitions
+
+### TypeDefinition
+
+Defines a custom type.
+
+```typescript
+class TypeDefinition extends AstNode {
+  annotations: Annotation[];
+  
+  constructor(
+    public name: string,
+    public type: Type
+  );
+}
+```
+
+<ParamField path="name" type="string">
+  The type name (must start with uppercase letter)
+</ParamField>
+
+<ParamField path="type" type="Type">
+  The type definition (can be StructType, EnumType, or a type reference)
+</ParamField>
+
+<ParamField path="annotations" type="Annotation[]" default="[]">
+  Annotations attached to this type definition
+</ParamField>
+
+#### Example
+
+```typescript
+// Corresponds to: type User { id: uuid, name: string }
+const userType = new TypeDefinition(
+  "User",
+  new StructType([
+    new Field("id", new UuidPrimitiveType()),
+    new Field("name", new StringPrimitiveType())
+  ])
+);
+```
+
+## Primitive Types
+
+All primitive types extend `PrimitiveType` and have a `name` property.
+
+### String Types
+
+- `StringPrimitiveType` - General string (`"string"`)
+- `EmailPrimitiveType` - Email address (`"email"`)
+- `UrlPrimitiveType` - URL (`"url"`)
+- `UuidPrimitiveType` - UUID (`"uuid"`)
+- `HtmlPrimitiveType` - HTML content (`"html"`)
+- `XmlPrimitiveType` - XML content (`"xml"`)
+- `Base64PrimitiveType` - Base64-encoded data (`"base64"`)
+- `HexPrimitiveType` - Hexadecimal string (`"hex"`)
+
+### Numeric Types
+
+- `IntPrimitiveType` - Signed 32-bit integer (`"int"`)
+- `UIntPrimitiveType` - Unsigned 32-bit integer (`"uint"`)
+- `FloatPrimitiveType` - Floating-point number (`"float"`)
+- `BigIntPrimitiveType` - Big integer (`"bigint"`)
+- `MoneyPrimitiveType` - Money amount (`"money"`)
+- `DecimalPrimitiveType` - Decimal number (`"decimal"`)
+
+### Date/Time Types
+
+- `DatePrimitiveType` - Date without time (`"date"`)
+- `DateTimePrimitiveType` - Date and time (`"datetime"`)
+
+### Other Types
+
+- `BoolPrimitiveType` - Boolean (`"bool"`)
+- `BytesPrimitiveType` - Binary data (`"bytes"`)
+- `VoidPrimitiveType` - Void/empty (`"void"`)
+- `JsonPrimitiveType` - JSON data (`"json"`)
+
+### Brazilian Document Types
+
+- `CpfPrimitiveType` - CPF (Brazilian individual tax ID) (`"cpf"`)
+- `CnpjPrimitiveType` - CNPJ (Brazilian company tax ID) (`"cnpj"`)
+
+## Composite Types
+
+### StructType
+
+Represents a struct (object) type.
+
+```typescript
+class StructType extends Type {
+  name: string;
+  fields: Field[];
+  
+  constructor(public fieldsAndSpreads: Array<Field | Spread>);
+}
+```
+
+<ParamField path="fieldsAndSpreads" type="Array<Field | Spread>">
+  Fields and spread operators in the struct
+</ParamField>
+
+<ParamField path="fields" type="Field[]" default="[]">
+  Resolved fields (populated during semantic analysis)
+</ParamField>
+
+<ParamField path="name" type="string">
+  Generated name for inline structs
+</ParamField>
+
+#### Example
+
+```typescript
+// Corresponds to: { id: uuid, name: string }
+const struct = new StructType([
+  new Field("id", new UuidPrimitiveType()),
+  new Field("name", new StringPrimitiveType())
+]);
+```
+
+### EnumType
+
+Represents an enumeration type.
+
+```typescript
+class EnumType extends Type {
+  name: string;
+  
+  constructor(public values: EnumValue[]);
+  
+  get hasStructValues(): boolean;
+}
+```
+
+<ParamField path="values" type="EnumValue[]">
+  Enum value entries
+</ParamField>
+
+<ParamField path="hasStructValues" type="boolean">
+  `true` if any enum value has associated data (tagged enum)
+</ParamField>
+
+#### Example
+
+```typescript
+// Simple enum: enum { Pending, Active, Inactive }
+const statusEnum = new EnumType([
+  new EnumValue("Pending"),
+  new EnumValue("Active"),
+  new EnumValue("Inactive")
+]);
+
+// Tagged enum: enum { Text(content: string), Image(url: string) }
+const messageTypeEnum = new EnumType([
+  new EnumValue("Text"),
+  new EnumValue("Image")
+]);
+messageTypeEnum.values[0].struct = new StructType([
+  new Field("content", new StringPrimitiveType())
+]);
+messageTypeEnum.values[1].struct = new StructType([
+  new Field("url", new StringPrimitiveType())
+]);
+```
+
+### EnumValue
+
+Represents a single enum value.
+
+```typescript
+class EnumValue extends AstNode {
+  annotations: Annotation[];
+  struct: StructType | null;
+  
+  constructor(public value: string);
+}
+```
+
+<ParamField path="value" type="string">
+  The enum value name
+</ParamField>
+
+<ParamField path="struct" type="StructType | null" default="null">
+  Associated data for tagged enums
+</ParamField>
+
+<ParamField path="annotations" type="Annotation[]" default="[]">
+  Annotations for this enum value
+</ParamField>
+
+### ArrayType
+
+Represents an array type.
+
+```typescript
+class ArrayType extends Type {
+  constructor(public base: Type);
+  
+  get name(): string; // Returns "<base>[]" 
+}
+```
+
+<ParamField path="base" type="Type">
+  The element type
+</ParamField>
+
+#### Example
+
+```typescript
+// string[]
+const stringArray = new ArrayType(new StringPrimitiveType());
+console.log(stringArray.name); // "string[]"
+
+// User[]
+const userArray = new ArrayType(new TypeReference("User"));
+console.log(userArray.name); // "User[]"
+```
+
+### OptionalType
+
+Represents an optional (nullable) type.
+
+```typescript
+class OptionalType extends Type {
+  constructor(public base: Type);
+  
+  get name(): string; // Returns "<base>?"
+}
+```
+
+<ParamField path="base" type="Type">
+  The underlying type
+</ParamField>
+
+#### Example
+
+```typescript
+// string?
+const optionalString = new OptionalType(new StringPrimitiveType());
+console.log(optionalString.name); // "string?"
+
+// int[]?
+const optionalIntArray = new OptionalType(
+  new ArrayType(new IntPrimitiveType())
+);
+console.log(optionalIntArray.name); // "int[]?"
+```
+
+### TypeReference
+
+References a custom type by name.
+
+```typescript
+class TypeReference extends Type {
+  type: Type;
+  
+  constructor(public name: string);
+}
+```
+
+<ParamField path="name" type="string">
+  The referenced type name
+</ParamField>
+
+<ParamField path="type" type="Type">
+  Resolved type (populated during semantic analysis)
+</ParamField>
+
+## Operations
+
+### FunctionOperation
+
+Represents a function/operation definition.
+
+```typescript
+class FunctionOperation extends AstNode {
+  annotations: Annotation[];
+  args: Field[];
+  
+  constructor(
+    public name: string,
+    public fieldsAndSpreads: Array<Field | Spread>,
+    public returnType: Type
+  );
+}
+```
+
+<ParamField path="name" type="string">
+  The function name
+</ParamField>
+
+<ParamField path="fieldsAndSpreads" type="Array<Field | Spread>">
+  Function arguments and spread operators
+</ParamField>
+
+<ParamField path="returnType" type="Type">
+  Return type
+</ParamField>
+
+<ParamField path="args" type="Field[]" default="[]">
+  Resolved arguments (populated during semantic analysis)
+</ParamField>
+
+<ParamField path="annotations" type="Annotation[]" default="[]">
+  Annotations like `@description`, `@rest`, `@throws`
+</ParamField>
+
+#### Example
+
+```typescript
+// fn getUser(id: uuid): User
+const getUserOp = new FunctionOperation(
+  "getUser",
+  [new Field("id", new UuidPrimitiveType())],
+  new TypeReference("User")
+);
+```
+
+### Field
+
+Represents a struct field or function argument.
+
+```typescript
+class Field extends AstNode {
+  annotations: Annotation[];
+  
+  constructor(
+    public name: string,
+    public type: Type,
+    public secret: boolean = false
+  );
+}
+```
+
+<ParamField path="name" type="string">
+  Field or argument name
+</ParamField>
+
+<ParamField path="type" type="Type">
+  Field type
+</ParamField>
+
+<ParamField path="secret" type="boolean" default="false">
+  Whether this field is marked as secret (using `!secret`)
+</ParamField>
+
+<ParamField path="annotations" type="Annotation[]" default="[]">
+  Field annotations
+</ParamField>
+
+### Spread
+
+Represents a spread operator (`...TypeName`).
+
+```typescript
+class Spread extends AstNode {
+  constructor(public typeReference: TypeReference);
+}
+```
+
+<ParamField path="typeReference" type="TypeReference">
+  The type being spread
+</ParamField>
+
+## Errors
+
+### ErrorNode
+
+Defines a custom error type.
+
+```typescript
+class ErrorNode extends AstNode {
+  annotations: Annotation[];
+  
+  constructor(
+    public name: string,
+    public dataType: Type
+  );
+}
+```
+
+<ParamField path="name" type="string">
+  Error name (must start with uppercase letter)
+</ParamField>
+
+<ParamField path="dataType" type="Type">
+  Error data type (`void` for errors without data)
+</ParamField>
+
+<ParamField path="annotations" type="Annotation[]" default="[]">
+  Error annotations
+</ParamField>
+
+#### Example
+
+```typescript
+// error NotFound
+const notFoundError = new ErrorNode(
+  "NotFound",
+  new VoidPrimitiveType()
+);
+
+// error ValidationError { field: string, message: string }
+const validationError = new ErrorNode(
+  "ValidationError",
+  new StructType([
+    new Field("field", new StringPrimitiveType()),
+    new Field("message", new StringPrimitiveType())
+  ])
+);
+```
+
+## Annotations
+
+### Annotation
+
+Base class for all annotations.
+
+```typescript
+abstract class Annotation extends AstNode {}
+```
+
+### DescriptionAnnotation
+
+Documentation text.
+
+```typescript
+class DescriptionAnnotation extends Annotation {
+  constructor(public text: string);
+}
+```
+
+<ParamField path="text" type="string">
+  Description text
+</ParamField>
+
+#### Example
+
+```typescript
+// @description Retrieves a user by ID
+const desc = new DescriptionAnnotation("Retrieves a user by ID");
+```
+
+### ArgDescriptionAnnotation
+
+Argument-specific documentation.
+
+```typescript
+class ArgDescriptionAnnotation extends Annotation {
+  constructor(
+    public argName: string,
+    public text: string
+  );
+}
+```
+
+<ParamField path="argName" type="string">
+  Argument name
+</ParamField>
+
+<ParamField path="text" type="string">
+  Description text
+</ParamField>
+
+### ThrowsAnnotation
+
+Documents which errors a function can throw.
+
+```typescript
+class ThrowsAnnotation extends Annotation {
+  constructor(public error: string);
+}
+```
+
+<ParamField path="error" type="string">
+  Error type name
+</ParamField>
+
+### RestAnnotation
+
+Maps a function to a REST endpoint.
+
+```typescript
+class RestAnnotation extends Annotation {
+  constructor(
+    public readonly method: string,
+    public readonly path: string,
+    public readonly pathVariables: readonly string[],
+    public readonly queryVariables: readonly string[],
+    public readonly headers: ReadonlyMap<string, string>,
+    public readonly bodyVariable: string | null
+  );
+}
+```
+
+<ParamField path="method" type="string">
+  HTTP method (GET, POST, PUT, DELETE, etc.)
+</ParamField>
+
+<ParamField path="path" type="string">
+  URL path template
+</ParamField>
+
+<ParamField path="pathVariables" type="readonly string[]">
+  Variable names in the path
+</ParamField>
+
+<ParamField path="queryVariables" type="readonly string[]">
+  Variable names for query parameters
+</ParamField>
+
+<ParamField path="headers" type="ReadonlyMap<string, string>">
+  Custom HTTP headers
+</ParamField>
+
+<ParamField path="bodyVariable" type="string | null">
+  Variable name for request body
+</ParamField>
+
+### HiddenAnnotation
+
+Marks an item as hidden from generated documentation.
+
+```typescript
+class HiddenAnnotation extends Annotation {}
+```
+
+### StatusCodeAnnotation
+
+Specifies HTTP status code for a function response.
+
+```typescript
+class StatusCodeAnnotation extends Annotation {
+  constructor(public statusCode: number);
+}
+```
+
+<ParamField path="statusCode" type="number">
+  HTTP status code (e.g., 200, 201, 404)
+</ParamField>

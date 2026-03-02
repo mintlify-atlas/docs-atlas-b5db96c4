@@ -1,0 +1,547 @@
+---
+title: 'Kotlin Android Client Generator'
+description: 'Generate type-safe Kotlin client code for Android apps with coroutines support'
+---
+
+The Kotlin Android generator creates client code optimized for Android applications with Kotlin coroutines.
+
+## Generate Kotlin client code
+
+<Tabs>
+  <Tab title="With Callbacks">
+    ```bash
+    sdkgen api.sdkgen -o app/src/main/java/ApiClient.kt -t kotlin_android
+    ```
+    
+    Generates code with callback support for flexible async handling.
+  </Tab>
+  <Tab title="Without Callbacks">
+    ```bash
+    sdkgen api.sdkgen -o app/src/main/java/ApiClient.kt -t kotlin_android_without_callbacks
+    ```
+    
+    Generates code with coroutines only, no callback parameters.
+  </Tab>
+</Tabs>
+
+**Targets:**
+- `kotlin_android` - With callback support
+- `kotlin_android_without_callbacks` - Coroutines only
+
+## What gets generated
+
+The Kotlin generator creates:
+
+- **ApiClient class**: HTTP client with coroutine-based methods
+- **Data classes**: Parcelize-compatible Kotlin data classes
+- **Enums**: Kotlin enums for enum types
+- **Error classes**: Type-safe error classes
+- **Response wrapper**: Generic response with data, error, and stats
+- **Type adapters**: Gson type adapters for serialization
+
+## Generated code structure
+
+### Imports and setup
+
+```kotlin
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+import android.content.Context
+import android.util.Base64
+import com.google.gson.*
+import com.google.gson.reflect.TypeToken
+import com.google.gson.annotations.SerializedName
+import io.sdkgen.runtime.SdkgenHttpClient
+import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers.IO
+import okhttp3.Interceptor
+
+inline fun <reified T> Gson.fromJson(json: String) =
+    fromJson<T>(json, object : TypeToken<T>() {}.type)
+```
+
+### API client class
+
+```kotlin
+class ApiClient(
+    baseUrl: String,
+    val applicationContext: Context,
+    defaultTimeoutMillis: Long = 10000L,
+    fingerprint: String? = null,
+    httpInterceptor: Interceptor? = null,
+    httpNetworkInterceptor: Interceptor? = null
+) : SdkgenHttpClient(
+    baseUrl,
+    applicationContext,
+    defaultTimeoutMillis,
+    fingerprint,
+    httpInterceptor,
+    httpNetworkInterceptor
+) {
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(
+            object : TypeToken<ByteArray>() {}.type,
+            ByteArrayDeserializer()
+        )
+        .create()
+    
+    private val sdkgenIOScope = CoroutineScope(IO + SupervisorJob())
+    
+    // Operations...
+}
+```
+
+### Enum definitions
+
+```kotlin
+enum class Status {
+    @SerializedName("active") Active,
+    @SerializedName("inactive") Inactive,
+    @SerializedName("pending") Pending
+}
+
+enum class Role {
+    @SerializedName("admin") Admin,
+    @SerializedName("user") User,
+    @SerializedName("guest") Guest
+}
+```
+
+### Data classes
+
+Struct types become Parcelize data classes:
+
+```kotlin
+@Parcelize
+data class User(
+    val id: String,
+    val name: String,
+    val email: String,
+    val status: Status,
+    val role: Role,
+    val createdAt: Date,
+    val metadata: @RawValue Any?
+) : Parcelable
+
+@Parcelize
+data class Post(
+    val id: String,
+    val title: String,
+    val content: String,
+    val authorId: String,
+    val publishedAt: Date?
+) : Parcelable
+```
+
+### Error classes
+
+```kotlin
+open class Error(val message: String? = null)
+
+data class Response<T>(
+    val error: Error?,
+    val data: T?,
+    val stats: CallStats?
+)
+
+data class NotFoundException(
+    override val message: String? = null
+) : ApiClient.Error(message)
+
+data class ValidationException(
+    override val message: String? = null,
+    val data: ValidationData? = null
+) : ApiClient.Error(message)
+
+enum class ErrorType {
+    Connection,
+    NotFound,
+    Validation,
+    Fatal;
+    
+    fun type(): Class<out ApiClient.Error> {
+        return when (this) {
+            Connection -> ApiClient.Connection::class.java
+            NotFound -> ApiClient.NotFoundException::class.java
+            Validation -> ApiClient.ValidationException::class.java
+            Fatal -> ApiClient.Fatal::class.java
+        }
+    }
+}
+```
+
+### Operation methods (with callbacks)
+
+```kotlin
+fun getUser(
+    id: String,
+    timeoutMillis: Long? = null,
+    callback: ((response: Response<User>) -> Unit)? = null
+): Deferred<Response<out User>> = sdkgenIOScope.async {
+    val bodyArgs = JsonObject().apply {
+        addProperty("id", id)
+    }
+    
+    val call = makeRequest("getUser", bodyArgs, timeoutMillis)
+    val response: Response<User> = handleCallResponse(call)
+    withContext(Dispatchers.Main) { callback?.invoke(response) }
+    return@async response
+}
+
+fun createUser(
+    name: String,
+    email: String,
+    status: Status,
+    timeoutMillis: Long? = null,
+    callback: ((response: Response<Unit>) -> Unit)? = null
+): Deferred<Response<out Unit>> = sdkgenIOScope.async {
+    val bodyArgs = JsonObject().apply {
+        addProperty("name", name)
+        addProperty("email", email)
+        addProperty("status", status.name)
+    }
+    
+    val call = makeRequest("createUser", bodyArgs, timeoutMillis)
+    val response: Response<Unit> = handleCallResponse(call)
+    withContext(Dispatchers.Main) { callback?.invoke(response) }
+    return@async response
+}
+```
+
+## Using the client
+
+### Basic usage with coroutines
+
+```kotlin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var api: ApiClient
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        api = ApiClient(
+            baseUrl = "https://api.example.com",
+            applicationContext = applicationContext
+        )
+        
+        // Use coroutines
+        lifecycleScope.launch {
+            val response = api.getUser(id = "123").await()
+            
+            when {
+                response.data != null -> {
+                    val user = response.data
+                    println("User: ${user.name}")
+                }
+                response.error != null -> {
+                    when (val error = response.error) {
+                        is ApiClient.NotFoundException -> 
+                            showError("User not found")
+                        is ApiClient.ValidationException -> 
+                            showError("Invalid data: ${error.data}")
+                        else -> 
+                            showError("Error: ${error.message}")
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### Using callbacks
+
+```kotlin
+api.getUser(
+    id = "123",
+    callback = { response ->
+        when {
+            response.data != null -> {
+                textView.text = "User: ${response.data.name}"
+            }
+            response.error != null -> {
+                Toast.makeText(
+                    this,
+                    "Error: ${response.error.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+)
+```
+
+### Custom timeout
+
+```kotlin
+val response = api.getUser(
+    id = "123",
+    timeoutMillis = 5000L  // 5 seconds
+).await()
+```
+
+## Integration with Android
+
+### ViewModel pattern
+
+```kotlin
+class UserViewModel(private val api: ApiClient) : ViewModel() {
+    private val _user = MutableLiveData<User>()
+    val user: LiveData<User> = _user
+    
+    private val _error = MutableLiveData<String>()
+    val error: LiveData<String> = _error
+    
+    fun loadUser(id: String) {
+        viewModelScope.launch {
+            val response = api.getUser(id).await()
+            
+            when {
+                response.data != null -> _user.value = response.data
+                response.error != null -> _error.value = response.error.message
+            }
+        }
+    }
+}
+```
+
+### Dependency injection with Hilt
+
+```kotlin
+@Module
+@InstallIn(SingletonComponent::class)
+object ApiModule {
+    @Provides
+    @Singleton
+    fun provideApiClient(
+        @ApplicationContext context: Context
+    ): ApiClient {
+        return ApiClient(
+            baseUrl = BuildConfig.API_URL,
+            applicationContext = context,
+            defaultTimeoutMillis = 30000L
+        )
+    }
+}
+
+@AndroidEntryPoint
+class MainActivity : AppCompatActivity() {
+    @Inject
+    lateinit var api: ApiClient
+}
+```
+
+### Repository pattern
+
+```kotlin
+class UserRepository(private val api: ApiClient) {
+    suspend fun getUser(id: String): Result<User> {
+        val response = api.getUser(id).await()
+        
+        return when {
+            response.data != null -> Result.success(response.data)
+            response.error != null -> Result.failure(
+                Exception(response.error.message)
+            )
+            else -> Result.failure(Exception("Unknown error"))
+        }
+    }
+    
+    suspend fun listUsers(page: Int): Result<List<User>> {
+        val response = api.listUsers(page = page).await()
+        
+        return when {
+            response.data != null -> Result.success(response.data)
+            response.error != null -> Result.failure(
+                Exception(response.error.message)
+            )
+            else -> Result.failure(Exception("Unknown error"))
+        }
+    }
+}
+```
+
+## Dependencies
+
+Add these dependencies to your `build.gradle`:
+
+```kotlin
+dependencies {
+    implementation "io.sdkgen:runtime-android:1.0.0"
+    
+    // Coroutines
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+    
+    // Networking
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "com.google.code.gson:gson:2.10.1"
+    
+    // Parcelize
+    implementation "org.jetbrains.kotlin:kotlin-parcelize-runtime:1.9.0"
+}
+```
+
+Enable Parcelize in your module's `build.gradle`:
+
+```kotlin
+android {
+    buildFeatures {
+        parcelize true
+    }
+}
+```
+
+## Type mapping
+
+sdkgen types are mapped to Kotlin types:
+
+| sdkgen Type | Kotlin Type |
+|-------------|-------------|
+| `string` | `String` |
+| `int` | `Int` |
+| `uint` | `Int` |
+| `float` | `Double` |
+| `bool` | `Boolean` |
+| `date` | `Date` |
+| `datetime` | `Date` |
+| `bytes` | `ByteArray` |
+| `bigint` | `BigInteger` |
+| `decimal` | `BigDecimal` |
+| `json` | `Any` |
+| `void` | `Unit` |
+| `T?` | `T?` (nullable) |
+| `T[]` | `List<T>` |
+
+## Features
+
+### Parcelize support
+
+All data classes are Parcelable for easy passing between Activities/Fragments:
+
+```kotlin
+val intent = Intent(this, UserDetailActivity::class.java)
+intent.putExtra("user", user)  // User is Parcelable
+startActivity(intent)
+```
+
+### Coroutines-first
+
+All operations return `Deferred` for flexible async handling:
+
+```kotlin
+// Await the result
+val response = api.getUser("123").await()
+
+// Launch and forget
+api.deleteUser("123")
+
+// Combine multiple calls
+val (userResponse, postsResponse) = coroutineScope {
+    awaitAll(
+        async { api.getUser("123") },
+        async { api.listPosts(authorId = "123") }
+    )
+}
+```
+
+### HTTP interceptors
+
+Add custom interceptors for logging, authentication, etc.:
+
+```kotlin
+val loggingInterceptor = HttpLoggingInterceptor().apply {
+    level = HttpLoggingInterceptor.Level.BODY
+}
+
+val authInterceptor = Interceptor { chain ->
+    val request = chain.request().newBuilder()
+        .addHeader("Authorization", "Bearer $token")
+        .build()
+    chain.proceed(request)
+}
+
+val api = ApiClient(
+    baseUrl = "https://api.example.com",
+    applicationContext = applicationContext,
+    httpInterceptor = authInterceptor,
+    httpNetworkInterceptor = loggingInterceptor
+)
+```
+
+### Response stats
+
+Access request timing information:
+
+```kotlin
+val response = api.getUser("123").await()
+response.stats?.let { stats ->
+    Log.d("API", "Request took ${stats.duration}ms")
+}
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use dependency injection">
+    Don't create API instances manually. Use Hilt or Koin:
+    ```kotlin
+    @Provides
+    @Singleton
+    fun provideApi(@ApplicationContext context: Context) =
+        ApiClient(BuildConfig.API_URL, context)
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle lifecycle properly">
+    Use lifecycle-aware coroutines:
+    ```kotlin
+    lifecycleScope.launch {
+        val response = api.getUser("123").await()
+        // Automatically cancelled when lifecycle is destroyed
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Don't block the main thread">
+    Always call API methods from coroutines:
+    ```kotlin
+    // Wrong - blocks UI
+    val response = runBlocking { api.getUser("123").await() }
+    
+    // Correct - async
+    lifecycleScope.launch {
+        val response = api.getUser("123").await()
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use the Response wrapper">
+    Always check both data and error:
+    ```kotlin
+    val response = api.getUser("123").await()
+    when {
+        response.data != null -> handleSuccess(response.data)
+        response.error != null -> handleError(response.error)
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="Swift iOS" icon="apple" href="/generators/swift-ios">
+  Generate iOS client code
+</Card>
+
+<Card title="TypeScript" icon="js" href="/generators/typescript">
+  Generate TypeScript client code
+</Card>
+
+</CardGroup>

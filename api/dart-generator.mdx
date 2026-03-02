@@ -1,0 +1,227 @@
+---
+title: Dart Generator
+description: API reference for the Dart code generator
+---
+
+The Dart generator creates client code for Flutter and Dart applications from your API schema.
+
+## Installation
+
+```bash
+npm install @sdkgen/dart-generator
+```
+
+## Functions
+
+### generateDartClientSource
+
+Generates Dart client code for Flutter/Dart applications.
+
+```typescript
+function generateDartClientSource(ast: AstRoot): string
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The parsed API schema from `@sdkgen/parser`
+</ParamField>
+
+**Returns:** Generated Dart source code as a string
+
+**Output includes:**
+- Enum definitions for all enum types
+- Class definitions for all struct types with immutable properties
+- Exception classes for all custom errors
+- `ApiClient` class extending `SdkgenHttpClient`
+- Type-safe async methods for all API operations
+- Type table for runtime type information
+- Function table mapping operations to signatures
+- Error table for exception construction
+
+**Dependencies:**
+- `package:sdkgen_runtime/http_client.dart` - Required for `SdkgenHttpClient`
+- `package:sdkgen_runtime/types.dart` - For type descriptions
+- `package:http/http.dart` - For HTTP client
+- `package:decimal/decimal.dart` - Included if schema uses `decimal` types
+
+## Generated Code Structure
+
+### Enum Types
+
+```dart
+enum Color {
+  red,
+  green,
+  blue,
+}
+```
+
+### Struct Types
+
+Structs become Dart classes with named constructors:
+
+```dart
+class User {
+  final String id;
+  final String name;
+  final String? email;
+
+  User({
+    required this.id,
+    required this.name,
+    this.email,
+  });
+}
+```
+
+### Error Classes
+
+```dart
+class UserNotFoundError extends SdkgenError {
+  UserNotFoundError(String message, dynamic request)
+      : super(message, request);
+}
+```
+
+### API Client
+
+The `ApiClient` class provides type-safe methods:
+
+```dart
+class ApiClient extends SdkgenHttpClient {
+  ApiClient(String baseUrl, [http.Client? client])
+      : super(baseUrl, client, _typeTable, _fnTable, _errTable);
+
+  Future<User> getUser({required String userId}) async {
+    final result = await makeRequest('getUser', {'userId': userId});
+    return result as User;
+  }
+}
+```
+
+## Usage
+
+The Dart generator is typically invoked via the sdkgen CLI:
+
+```bash
+sdkgen api.sdkgen -o lib/api_client.dart -t dart
+```
+
+## Programmatic Usage
+
+```typescript
+import { parse } from "@sdkgen/parser";
+import { generateDartClientSource } from "@sdkgen/dart-generator";
+import { readFileSync, writeFileSync } from "fs";
+
+const source = readFileSync("api.sdkgen", "utf-8");
+const ast = parse(source);
+
+const dartCode = generateDartClientSource(ast);
+writeFileSync("lib/api_client.dart", dartCode);
+```
+
+## Client Usage Example
+
+```dart
+import 'package:your_app/api_client.dart';
+
+void main() async {
+  final client = ApiClient('https://api.example.com');
+
+  try {
+    final user = await client.getUser(userId: '123');
+    print('User: ${user.name}');
+  } on UserNotFoundError catch (e) {
+    print('User not found: ${e.message}');
+  } catch (e) {
+    print('Error: $e');
+  }
+}
+```
+
+## Method Signatures
+
+Operations without arguments:
+```dart
+Future<ReturnType> operationName() async
+```
+
+Operations with required arguments:
+```dart
+Future<ReturnType> operationName({
+  required ParamType param1,
+  required ParamType param2,
+}) async
+```
+
+Operations with optional arguments:
+```dart
+Future<ReturnType> operationName({
+  required ParamType param1,
+  ParamType? optionalParam,
+}) async
+```
+
+Void operations:
+```dart
+Future<void> operationName({...}) async
+```
+
+## Type Tables
+
+The generator creates three tables for runtime type handling:
+
+### Type Table
+
+Maps custom types to their descriptions:
+```dart
+var _typeTable = {
+  'User': StructTypeDescription(
+    User,
+    {'id': 'string', 'name': 'string'},
+    (Map fields) => User(id: fields['id'], name: fields['name']),
+    (User obj) => ({'id': obj.id, 'name': obj.name}),
+  ),
+};
+```
+
+### Function Table
+
+Maps operations to their signatures:
+```dart
+var _fnTable = {
+  'getUser': FunctionDescription('User', {'userId': 'string'}),
+};
+```
+
+### Error Table
+
+Maps error types to constructors:
+```dart
+var _errTable = {
+  'UserNotFound': SdkgenErrorDescription(
+    'void',
+    (msg, req, data) => UserNotFoundError(msg, req)
+  ),
+};
+```
+
+## Type Mapping
+
+| sdkgen Type | Dart Type |
+|-------------|----------|
+| `string` | `String` |
+| `int` | `int` |
+| `uint` | `int` |
+| `float` | `double` |
+| `bool` | `bool` |
+| `bytes` | `Uint8List` |
+| `bigint` | `BigInt` |
+| `date` | `DateTime` |
+| `datetime` | `DateTime` |
+| `decimal` | `Decimal` |
+| `void` | `void` |
+| Custom struct | Generated class |
+| Custom enum | Generated enum |
+| `T?` | `T?` (nullable) |
+| `T[]` | `List<T>` |

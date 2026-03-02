@@ -1,0 +1,210 @@
+---
+title: Swagger/OpenAPI Generation
+description: Automatically generate OpenAPI documentation for your REST endpoints
+---
+
+When you add REST endpoints to your sdkgen API using the `@rest` annotation, sdkgen automatically generates a Swagger UI interface and OpenAPI specification for your API.
+
+## Automatic Swagger UI
+
+Once you have at least one `@rest` endpoint in your API, sdkgen automatically creates:
+
+- **Swagger UI**: An interactive documentation interface at `/swagger`
+- **OpenAPI JSON**: The raw specification at `/swagger.json`
+
+### Accessing Swagger UI
+
+If your sdkgen server is running on `http://localhost:8000`, navigate to:
+
+```
+http://localhost:8000/swagger
+```
+
+The Swagger UI provides:
+- Interactive API documentation
+- Try-it-out functionality for testing endpoints
+- Request/response examples
+- Schema definitions
+
+## OpenAPI Specification
+
+The generated OpenAPI specification follows the OpenAPI 3.0.0 standard and includes:
+
+### Operation Details
+
+For each REST endpoint, the specification includes:
+
+- **Operation ID**: The sdkgen function name
+- **Parameters**: Path variables, query parameters, and headers
+- **Request Body**: Schema for the body argument
+- **Responses**: Success and error responses with schemas
+- **Tags**: Automatically grouped by the first segment of the path
+
+### Schema Definitions
+
+sdkgen automatically converts your types to JSON Schema:
+
+| sdkgen Type | OpenAPI Schema |
+|-------------|----------------|
+| `string`, `uuid`, `hex`, `html`, `base64` | `type: string` |
+| `url` | `type: string, format: uri` |
+| `email` | `type: string, format: email` |
+| `date` | `type: string, format: date` |
+| `datetime` | `type: string, format: date-time` |
+| `bool` | `type: boolean` |
+| `int`, `uint` | `type: integer, format: int32` |
+| `money`, `bigint` | `type: integer, format: int64` |
+| `float`, `decimal` | `type: number` |
+| `bytes` | `type: string, format: byte` |
+| `json` | No type constraint (accepts any JSON) |
+| `optional<T>` | `oneOf: [schema(T), { type: null }]` |
+| `T[]` | `type: array, items: schema(T)` |
+| enum | `type: string, enum: [values]` |
+| struct | `type: object` with properties |
+
+### Example
+
+Given this sdkgen definition:
+
+```sdkgen
+type Product {
+  id: uuid
+  name: string
+  price: money
+  inStock: bool
+}
+
+@description Get product by ID
+@rest GET /products/{id}
+fn getProduct(id: uuid): Product?
+```
+
+The generated OpenAPI includes:
+
+```json
+{
+  "paths": {
+    "/products/{id}": {
+      "get": {
+        "operationId": "getProduct",
+        "summary": "Get product by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Product" }
+              }
+            }
+          },
+          "404": {}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "price": { "type": "integer", "format": "int64" },
+          "inStock": { "type": "boolean" }
+        },
+        "required": ["id", "name", "price", "inStock"]
+      }
+    }
+  }
+}
+```
+
+## Error Documentation
+
+The Swagger specification automatically includes error responses based on:
+
+- `@throws` annotations on your functions
+- `@statusCode` annotations on error definitions
+- Default error handling (400 for errors, 500 for Fatal)
+
+Example:
+
+```sdkgen
+@statusCode 404
+error NotFound
+
+@statusCode 403
+error Forbidden
+
+error ValidationError
+
+@throws NotFound
+@throws Forbidden
+@rest GET /users/{id}
+fn getUser(id: uuid): User
+```
+
+This generates error responses:
+- `404`: NotFound
+- `403`: Forbidden
+- `400`: ValidationError and other errors
+- `500`: Fatal errors
+
+## Authentication
+
+The generated OpenAPI includes bearer authentication by default:
+
+```json
+{
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "security": [
+    { "bearerAuth": [] }
+  ]
+}
+```
+
+## Enabling/Disabling Swagger
+
+The Swagger UI is only available when introspection is enabled on your server. To control this:
+
+```typescript
+import { SdkgenHttpServer } from "@sdkgen/node-runtime";
+
+const server = new SdkgenHttpServer(api, {
+  introspection: true  // Enable Swagger UI
+});
+```
+
+When `introspection` is `false`, the `/swagger` and `/swagger.json` endpoints return 404.
+
+## Using Descriptions
+
+Enhance your Swagger documentation with `@description` and `@arg` annotations:
+
+```sdkgen
+@description Creates a new product in the catalog
+@arg name The display name of the product
+@arg price Price in cents
+@rest POST /products [body {product}]
+fn createProduct(product: NewProduct): Product
+```
+
+These descriptions appear in:
+- The Swagger UI interface
+- The OpenAPI `summary` and `description` fields
+- Parameter descriptions

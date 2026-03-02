@@ -1,0 +1,635 @@
+---
+title: ".NET Runtime API Reference"
+description: "Complete API reference for the sdkgen .NET runtime package"
+---
+
+# .NET Runtime API
+
+The sdkgen .NET runtime is implemented in F# and provides server runtime components for hosting sdkgen APIs in .NET applications.
+
+## Installation
+
+Add the runtime project reference to your .NET application:
+
+```xml
+<ProjectReference Include="path/to/dotnet-runtime/runtime/runtime.fsproj" />
+```
+
+## Package Structure
+
+The runtime consists of three main modules:
+
+- `Sdkgen.Context` - Request context types and parsing
+- `Sdkgen.Helpers` - Type decoding helpers and error types
+- `Sdkgen.Runtime` - HTTP server implementation
+
+---
+
+## SdkgenHttpServer
+
+ASP.NET Core-based HTTP server for hosting sdkgen APIs.
+
+### Constructor
+
+```fsharp
+new SdkgenHttpServer(api: BaseApi)
+```
+
+<ParamField path="api" type="BaseApi" required>
+  Implementation of the BaseApi abstract class containing your API functions
+</ParamField>
+
+### Methods
+
+#### Listen()
+
+Start the HTTP server on the specified port.
+
+```fsharp
+member this.Listen(port: int): unit
+```
+
+<ParamField path="port" type="int" required>
+  Port number to listen on
+</ParamField>
+
+**Example:**
+
+```fsharp
+open Sdkgen.Runtime
+
+let api = MyApiImplementation()
+let server = SdkgenHttpServer(api)
+server.Listen(8080)
+```
+
+### Configuration Properties
+
+The server has several internal configuration options:
+
+<ParamField path="DynamicCorsOrigin" type="bool" default="true">
+  Enable dynamic CORS origin handling
+</ParamField>
+
+<ParamField path="Introspection" type="bool" default="true">
+  Enable introspection endpoint (GET /ast.json)
+</ParamField>
+
+<ParamField path="HasSwagger" type="bool" default="false">
+  Enable Swagger UI support
+</ParamField>
+
+<ParamField path="IgnoredUrlPrefix" type="string" default='""'>
+  URL prefix to ignore when routing
+</ParamField>
+
+---
+
+## BaseApi
+
+Abstract class that must be implemented to define your API.
+
+### Abstract Members
+
+#### ExecuteFunction
+
+Execute an API function and write the result to JSON.
+
+```fsharp
+abstract member ExecuteFunction: Context * Utf8JsonWriter -> Task
+```
+
+<ParamField path="context" type="Context" required>
+  Request context containing function name, args, and metadata
+</ParamField>
+
+<ParamField path="writer" type="Utf8JsonWriter" required>
+  JSON writer to output the function result
+</ParamField>
+
+#### GetAstJson
+
+Return the API's AST as a JSON string.
+
+```fsharp
+abstract member GetAstJson: unit -> string
+```
+
+<ResponseField name="result" type="string">
+  AST JSON string
+</ResponseField>
+
+**Example Implementation:**
+
+```fsharp
+type MyApi() =
+  inherit BaseApi()
+  
+  override this.GetAstJson() =
+    // Return your API's AST JSON
+    File.ReadAllText("api.json")
+  
+  override this.ExecuteFunction(ctx: Context, writer: Utf8JsonWriter) =
+    task {
+      match ctx.Name with
+      | "getUserById" ->
+        let id = ctx.Args.["id"].GetInt32()
+        let user = getUserById id
+        writer.WriteStartObject()
+        writer.WriteNumber("id", user.Id)
+        writer.WriteString("name", user.Name)
+        writer.WriteEndObject()
+      | _ ->
+        raise (FatalException($"Unknown function: {ctx.Name}"))
+    }
+```
+
+---
+
+## Context
+
+Request context containing all information about the API call.
+
+### Type Definition
+
+```fsharp
+type Context = {
+  Name: string
+  Args: Dictionary<string, JsonElement>
+  DeviceInfo: ContextDeviceInfo
+  Extra: Dictionary<string, JsonElement>
+  mutable Headers: IHeaderDictionary
+  Id: string
+  mutable Ip: string
+}
+```
+
+### Fields
+
+<ParamField path="Name" type="string">
+  Name of the API function being called
+</ParamField>
+
+<ParamField path="Args" type="Dictionary<string, JsonElement>">
+  Function arguments as JSON elements
+</ParamField>
+
+<ParamField path="DeviceInfo" type="ContextDeviceInfo">
+  Information about the client device
+</ParamField>
+
+<ParamField path="Extra" type="Dictionary<string, JsonElement>">
+  Extra data sent by the client
+</ParamField>
+
+<ParamField path="Headers" type="IHeaderDictionary">
+  HTTP request headers (mutable)
+</ParamField>
+
+<ParamField path="Id" type="string">
+  Unique request identifier
+</ParamField>
+
+<ParamField path="Ip" type="string">
+  Client IP address (mutable)
+</ParamField>
+
+### ContextDeviceInfo
+
+```fsharp
+type ContextDeviceInfo = {
+  Id: string
+  Language: string option
+  Platform: Dictionary<string, JsonElement>
+  Timezone: string option
+  Type: string
+  Version: string option
+  Fingerprint: string option
+}
+```
+
+<ParamField path="Id" type="string">
+  Device identifier
+</ParamField>
+
+<ParamField path="Type" type="string" default='"api"'>
+  Device type (e.g., "web", "mobile", "api")
+</ParamField>
+
+<ParamField path="Language" type="string option">
+  Client language preference
+</ParamField>
+
+<ParamField path="Platform" type="Dictionary<string, JsonElement>">
+  Platform-specific information
+</ParamField>
+
+<ParamField path="Timezone" type="string option">
+  Client timezone
+</ParamField>
+
+<ParamField path="Version" type="string option">
+  Client version string
+</ParamField>
+
+<ParamField path="Fingerprint" type="string option">
+  Device fingerprint
+</ParamField>
+
+**Example:**
+
+```fsharp
+let getUserById (ctx: Context) =
+  printfn $"Request from IP: {ctx.Ip}"
+  printfn $"Device: {ctx.DeviceInfo.Type}"
+  
+  let id = ctx.Args.["id"].GetInt32()
+  // ... fetch user
+```
+
+---
+
+## Error Types
+
+### SdkgenException
+
+Base exception class for all sdkgen errors.
+
+```fsharp
+type SdkgenException =
+  inherit Exception
+  val Type: string
+  new(type': string, message: string, inner: Exception)
+```
+
+<ParamField path="Type" type="string">
+  Error type identifier
+</ParamField>
+
+### FatalException
+
+Exception for fatal/unexpected errors.
+
+```fsharp
+type FatalException =
+  inherit SdkgenException
+  new(message: string)
+  new(message: string, inner: Exception)
+```
+
+**Example:**
+
+```fsharp
+open Sdkgen.Helpers
+
+// Throw a fatal error
+raise (FatalException("Database connection failed"))
+
+// Throw with inner exception
+try
+  // ... some operation
+with
+| ex -> raise (FatalException("Operation failed", ex))
+```
+
+---
+
+## Type Decoding Helpers
+
+The `Sdkgen.Helpers` module provides functions for decoding JSON elements into F# types.
+
+### String Types
+
+#### decodeString
+
+```fsharp
+val decodeString: JsonElement -> string -> string
+```
+
+Decode a JSON element as a string.
+
+#### decodeHtml
+
+```fsharp
+val decodeHtml: JsonElement -> string -> string
+```
+
+Decode an HTML string.
+
+#### decodeCpf
+
+```fsharp
+val decodeCpf: JsonElement -> string -> string
+```
+
+Decode a Brazilian CPF string.
+
+#### decodeCnpj
+
+```fsharp
+val decodeCnpj: JsonElement -> string -> string
+```
+
+Decode a Brazilian CNPJ string.
+
+#### decodeEmail
+
+```fsharp
+val decodeEmail: JsonElement -> string -> string
+```
+
+Decode an email address.
+
+#### decodeHex
+
+```fsharp
+val decodeHex: JsonElement -> string -> string
+```
+
+Decode a hexadecimal string.
+
+#### decodeBase64
+
+```fsharp
+val decodeBase64: JsonElement -> string -> string
+```
+
+Decode a base64 string.
+
+#### decodeXml
+
+```fsharp
+val decodeXml: JsonElement -> string -> string
+```
+
+Decode an XML string.
+
+### Numeric Types
+
+#### decodeInt32
+
+```fsharp
+val decodeInt32: JsonElement -> string -> int32
+```
+
+Decode a 32-bit integer.
+
+#### decodeUInt32
+
+```fsharp
+val decodeUInt32: JsonElement -> string -> uint32
+```
+
+Decode an unsigned 32-bit integer.
+
+#### decodeFloat
+
+```fsharp
+val decodeFloat: JsonElement -> string -> float
+```
+
+Decode a floating-point number.
+
+#### decodeMoney
+
+```fsharp
+val decodeMoney: JsonElement -> string -> decimal
+```
+
+Decode a money value (must be an integer amount of cents).
+
+#### decodeBigInteger
+
+```fsharp
+val decodeBigInteger: JsonElement -> string -> bigint
+```
+
+Decode an arbitrary-size integer from a string.
+
+### Other Types
+
+#### decodeBool
+
+```fsharp
+val decodeBool: JsonElement -> string -> bool
+```
+
+Decode a boolean value.
+
+#### decodeBytes
+
+```fsharp
+val decodeBytes: JsonElement -> string -> byte[]
+```
+
+Decode a base64-encoded byte array.
+
+#### decodeUrl
+
+```fsharp
+val decodeUrl: JsonElement -> string -> Uri
+```
+
+Decode a URL string into a Uri.
+
+#### decodeUuid
+
+```fsharp
+val decodeUuid: JsonElement -> string -> Guid
+```
+
+Decode a UUID string into a Guid.
+
+#### decodeDate
+
+```fsharp
+val decodeDate: JsonElement -> string -> DateTime
+```
+
+Decode a date string (YYYY-MM-DD format).
+
+#### decodeDateTime
+
+```fsharp
+val decodeDateTime: JsonElement -> string -> DateTime
+```
+
+Decode a datetime string (ISO 8601 format).
+
+### Collection Types
+
+#### decodeArray
+
+```fsharp
+val decodeArray<'T>: (JsonElement -> string -> 'T) -> JsonElement -> string -> 'T list
+```
+
+Decode an array of elements.
+
+<ParamField path="decode_" type="JsonElement -> string -> 'T" required>
+  Decoder function for array elements
+</ParamField>
+
+#### decodeOptional
+
+```fsharp
+val decodeOptional<'T>: (JsonElement -> string -> 'T) -> JsonElement -> string -> 'T option
+```
+
+Decode an optional value.
+
+<ParamField path="decode_" type="JsonElement -> string -> 'T" required>
+  Decoder function for the value
+</ParamField>
+
+**Example:**
+
+```fsharp
+open Sdkgen.Helpers
+
+let processRequest (ctx: Context) =
+  // Decode arguments
+  let userId = 
+    ctx.Args.["userId"]
+    |> decodeInt32 <| "args.userId"
+  
+  let email = 
+    ctx.Args.["email"]
+    |> decodeOptional decodeEmail <| "args.email"
+  
+  let tags = 
+    ctx.Args.["tags"]
+    |> decodeArray decodeString <| "args.tags"
+  
+  // Use decoded values
+  match email with
+  | Some e -> printfn $"Email: {e}"
+  | None -> printfn "No email provided"
+```
+
+---
+
+## Helper Functions
+
+### randomBytes
+
+Generate random bytes as a hex string.
+
+```fsharp
+val randomBytes: int -> string
+```
+
+<ParamField path="bytes" type="int" required>
+  Number of random bytes to generate
+</ParamField>
+
+<ResponseField name="result" type="string">
+  Hex-encoded string of random bytes
+</ResponseField>
+
+**Example:**
+
+```fsharp
+let requestId = randomBytes 16
+// Result: "a3f2c1b9e4d5f6a7b8c9d0e1f2a3b4c5"
+```
+
+### decodeJsonElementStrict
+
+Get a JSON property, throwing if it doesn't exist.
+
+```fsharp
+val decodeJsonElementStrict: string -> JsonElement -> string -> JsonElement
+```
+
+<ParamField path="property" type="string" required>
+  Property name to extract
+</ParamField>
+
+### decodeJsonElementWeak
+
+Get a JSON property, returning undefined if it doesn't exist.
+
+```fsharp
+val decodeJsonElementWeak: string -> JsonElement -> string -> JsonElement
+```
+
+<ParamField path="property" type="string" required>
+  Property name to extract
+</ParamField>
+
+---
+
+## Active Patterns
+
+The helpers module provides active patterns for pattern matching on JSON elements:
+
+- `(|UInt32|_|)` - Match uint32 values
+- `(|Int32|_|)` - Match int32 values
+- `(|String|_|)` - Match string values
+- `(|Double|_|)` - Match double values
+- `(|Decimal|_|)` - Match decimal values
+- `(|BigInt|_|)` - Match bigint values
+- `(|Uri|_|)` - Match URI values
+- `(|Guid|_|)` - Match GUID values
+- `(|DateTime|_|)` - Match datetime values
+- `(|Date|_|)` - Match date values
+
+**Example:**
+
+```fsharp
+open Sdkgen.Helpers
+
+let processValue (json: JsonElement) =
+  match json.ValueKind, json with
+  | JsonValueKind.Number, Int32 value -> 
+    printfn $"Got integer: {value}"
+  | JsonValueKind.String, Guid value -> 
+    printfn $"Got GUID: {value}"
+  | _ -> 
+    printfn "Unknown type"
+```
+
+---
+
+## Health Check
+
+The server provides a built-in health check endpoint:
+
+**GET /**
+
+Returns:
+- Status 200 with `{"ok": true}` if healthy
+- Status 500 with `{"ok": false}` if unhealthy
+
+Custom health checks can be configured via the `OnHealthCheck` handler.
+
+---
+
+## Request/Response Flow
+
+1. Client sends POST request with JSON body
+2. Server parses JSON into `Context` object
+3. Server calls `api.ExecuteFunction(context, writer)`
+4. Implementation writes result to JSON writer
+5. Server wraps result in response envelope:
+   ```json
+   {
+     "result": { /* your data */ },
+     "error": null,
+     "duration": 0.123456,
+     "host": "server-hostname"
+   }
+   ```
+6. On error, response contains:
+   ```json
+   {
+     "result": null,
+     "error": {
+       "type": "ErrorType",
+       "message": "Error message"
+     },
+     "duration": 0.123456,
+     "host": "server-hostname"
+   }
+   ```

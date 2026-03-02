@@ -1,0 +1,287 @@
+---
+title: .NET Server Implementation
+description: Build sdkgen servers using C# or F#
+---
+
+.NET server implementations are generated from your `.sdkgen` API definitions, allowing you to build type-safe APIs in C# or F#.
+
+## Generating .NET Server Code
+
+You can generate .NET server code from your running Node.js sdkgen server or using the CLI.
+
+### From Running Server
+
+If you have a Node.js sdkgen server running with introspection enabled:
+
+```bash
+# C# server code
+curl http://localhost:8000/targets/dotnet/api.cs > Api.cs
+
+# F# server code
+curl http://localhost:8000/targets/dotnet/api.fs > Api.fs
+```
+
+### Using CLI
+
+Generate .NET code directly from your `.sdkgen` files:
+
+```bash
+# C# server
+npx @sdkgen/cli api.sdkgen -o Api.cs -t csharp_server
+
+# F# server
+npx @sdkgen/cli api.sdkgen -o Api.fs -t fsharp_server
+```
+
+## C# Server Implementation
+
+### Generated Code Structure
+
+The generated C# code includes:
+
+- **Type Definitions**: Classes for all custom types
+- **Enum Definitions**: Enums for all enum types
+- **Error Classes**: Exception classes for custom errors
+- **ApiConfig Class**: Configuration and handler registration
+
+### Basic Setup
+
+```csharp
+using System;
+using System.Threading.Tasks;
+using SdkgenGenerated;
+
+public class Program
+{
+    public static async Task Main(string[] args)
+    {
+        var api = new ApiConfig();
+        
+        // Register function handlers
+        api.Fn["getUser"] = async (context, request) =>
+        {
+            var userId = request["id"] as string;
+            
+            return new User
+            {
+                Name = "John Doe",
+                Age = 30
+            };
+        };
+        
+        // Start server (implementation depends on your framework)
+        await StartServer(api);
+    }
+}
+```
+
+### Type Definitions
+
+Custom types are generated as C# classes:
+
+```csharp
+// From: type User { name: string, age: uint }
+public class User
+{
+    public string Name { get; set; }
+    public uint Age { get; set; }
+}
+```
+
+Optional types use nullable types:
+
+```csharp
+// From: type Profile { bio: string? }
+public class Profile
+{
+    public string? Bio { get; set; }
+}
+```
+
+### Enum Definitions
+
+```csharp
+// From: enum Status { active, inactive, pending }
+public enum Status
+{
+    Active,
+    Inactive,
+    Pending
+}
+```
+
+### Error Handling
+
+Throw custom errors using generated exception classes:
+
+```csharp
+api.Fn["getUser"] = async (context, request) =>
+{
+    var userId = request["id"] as string;
+    
+    if (string.IsNullOrEmpty(userId))
+    {
+        throw new ValidationErrorException("ID is required");
+    }
+    
+    var user = await FindUser(userId);
+    if (user == null)
+    {
+        throw new UserNotFoundException("User not found");
+    }
+    
+    return user;
+};
+```
+
+## F# Server Implementation
+
+### Generated Code Structure
+
+The generated F# code includes:
+
+- **Type Definitions**: Record types for custom types
+- **Discriminated Unions**: For enums and errors
+- **Module Functions**: For API operations
+
+### Basic Setup
+
+```fsharp
+open System
+open System.Threading.Tasks
+open SdkgenGenerated
+
+[<EntryPoint>]
+let main argv =
+    let api = ApiConfig()
+    
+    // Register function handlers
+    api.Fn.["getUser"] <- fun context request -> async {
+        let userId = request.["id"] :?> string
+        
+        return {
+            Name = "John Doe"
+            Age = 30u
+        } :> obj
+    }
+    
+    // Start server
+    startServer api
+    |> Async.RunSynchronously
+    0
+```
+
+### Type Definitions
+
+Custom types are generated as F# records:
+
+```fsharp
+// From: type User { name: string, age: uint }
+type User = {
+    Name: string
+    Age: uint32
+}
+```
+
+### Discriminated Unions
+
+```fsharp
+// From: enum Status { active, inactive, pending }
+type Status =
+    | Active
+    | Inactive
+    | Pending
+```
+
+## Integration with ASP.NET Core
+
+Here's how to integrate sdkgen with ASP.NET Core:
+
+```csharp
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using SdkgenGenerated;
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        // Add your services
+        services.AddSingleton<ApiConfig>();
+    }
+    
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        var api = app.ApplicationServices.GetRequiredService<ApiConfig>();
+        
+        // Register handlers
+        api.Fn["getUser"] = async (context, request) =>
+        {
+            // Implementation
+            return new User { Name = "John", Age = 30 };
+        };
+        
+        app.UseRouting();
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapPost("/", async context =>
+            {
+                // Handle sdkgen request
+                await HandleSdkgenRequest(context, api);
+            });
+        });
+    }
+}
+```
+
+## Type Mappings
+
+sdkgen types map to .NET types as follows:
+
+| sdkgen Type | C# Type | F# Type |
+|------------|---------|----------|
+| `string` | `string` | `string` |
+| `int` | `int` | `int` |
+| `uint` | `uint` | `uint32` |
+| `float` | `double` | `float` |
+| `bool` | `bool` | `bool` |
+| `date` | `DateTime` | `DateTime` |
+| `datetime` | `DateTime` | `DateTime` |
+| `bytes` | `byte[]` | `byte[]` |
+| `uuid` | `Guid` | `Guid` |
+| `json` | `object` | `obj` |
+| `money` | `decimal` | `decimal` |
+| `decimal` | `decimal` | `decimal` |
+| `T?` | `T?` | `T option` |
+| `T[]` | `List<T>` | `T list` |
+
+## Context Object
+
+The context object in .NET handlers contains:
+
+- **Request Information**
+  - `Name`: Function name
+  - `Args`: Function arguments as dictionary
+  - `Id`: Request ID
+  - `Ip`: Client IP address
+  - `Headers`: HTTP headers
+  - `DeviceInfo`: Device information
+
+- **Response Configuration**
+  - `StatusCode`: Optional HTTP status code
+  - `Headers`: Response headers dictionary
+
+## Best Practices
+
+1. **Use dependency injection**: Inject services into your handler functions
+2. **Handle errors properly**: Use typed exceptions for better error handling
+3. **Validate input**: Check arguments before processing
+4. **Use async/await**: All handlers should be asynchronous
+5. **Keep handlers thin**: Move business logic to separate services
+
+## Next Steps
+
+- [Server Implementation Overview](/server/overview)
+- [Node.js Server](/server/nodejs)

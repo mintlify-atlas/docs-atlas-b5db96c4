@@ -1,0 +1,443 @@
+---
+title: API Compatibility Checking
+description: Ensure backward compatibility when updating your API with the compatibility command
+---
+
+When evolving an API, it's crucial to maintain backward compatibility with existing clients. The sdkgen compatibility checker analyzes two versions of your API and identifies breaking changes that could cause client failures.
+
+## The Compatibility Command
+
+The sdkgen CLI provides a `compatibility` command that compares two API versions:
+
+```bash
+sdkgen compatibility --old src/api-v1.sdkgen --new src/api-v2.sdkgen
+```
+
+Alternatively, you can use positional arguments:
+
+```bash
+sdkgen compatibility src/api-v1.sdkgen src/api-v2.sdkgen
+```
+
+### Output
+
+If there are no breaking changes:
+
+```
+No breaking changes.
+```
+
+If breaking changes are detected:
+
+```
+function getUser used to exist, but it's now missing. Add it back.
+getProduct.ret.price wasn't optional, but now it is. If the client receives a null, it will crash. Remove the optional annotation.
+creatProduct.args.name was string and now it is int. They are not compatible.
+```
+
+The command exits with:
+- **Exit code 0**: No breaking changes
+- **Exit code 1**: Breaking changes detected or error occurred
+
+## What Gets Checked
+
+The compatibility checker analyzes:
+
+### Functions
+
+- **Removed functions**: Functions that existed in the old version but are missing in the new version
+- **Return type changes**: Changes to function return types
+- **Argument changes**: New required arguments or type changes to existing arguments
+
+### Types
+
+- **Struct fields**: Added required fields, removed fields, or type changes
+- **Enum values**: Removed enum values or changes to enum value data
+- **Type conversions**: Incompatible type changes
+
+### Errors
+
+- **Error data types**: Changes to the data associated with errors
+
+## Understanding Breaking Changes
+
+### Client to Server (Arguments)
+
+These rules ensure that data sent by old clients can still be processed by the new server:
+
+#### Making Optional Required
+
+```sdkgen
+// Old version
+fn updateUser(id: uuid, name: string?): User
+
+// New version - BREAKING
+fn updateUser(id: uuid, name: string): User
+```
+
+**Issue**: Old clients might send `null` for `name`, which the new server won't accept.
+
+**Error message**:
+```
+updateUser.args.name was optional, but now it isn't. If the client sends a null, it will be invalid. Add the optional annotation back.
+```
+
+#### Adding Required Arguments
+
+```sdkgen
+// Old version
+fn createUser(name: string): User
+
+// New version - BREAKING
+fn createUser(name: string, email: email): User
+```
+
+**Issue**: Old clients don't know about the `email` argument.
+
+**Error message**:
+```
+createUser.args.email didn't exist before and isn't optional. Make it optional.
+```
+
+**Solution**: Make new arguments optional:
+```sdkgen
+fn createUser(name: string, email: email?): User
+```
+
+#### Type Narrowing
+
+```sdkgen
+// Old version
+fn setQuantity(amount: int): void
+
+// New version - BREAKING
+fn setQuantity(amount: uint): void
+```
+
+**Issue**: Old clients might send negative integers, which `uint` doesn't accept.
+
+### Server to Client (Return Types)
+
+These rules ensure that data sent by the new server can be processed by old clients:
+
+#### Making Required Optional
+
+```sdkgen
+// Old version
+type User {
+  id: uuid
+  name: string
+}
+
+// New version - BREAKING
+type User {
+  id: uuid
+  name: string?
+}
+```
+
+**Issue**: Old clients expect `name` to always exist and will crash if it's `null`.
+
+**Error message**:
+```
+User.name wasn't optional, but now it is. If the client receives a null, it will crash. Remove the optional annotation.
+```
+
+#### Removing Fields
+
+```sdkgen
+// Old version
+type Product {
+  id: uuid
+  name: string
+  price: money
+}
+
+// New version - BREAKING
+type Product {
+  id: uuid
+  name: string
+}
+```
+
+**Issue**: Old clients expect `price` to exist.
+
+**Error message**:
+```
+Product.price used to exist with type money, but it's now missing. Add it back.
+```
+
+#### Type Widening
+
+```sdkgen
+// Old version
+fn getQuantity(): uint
+
+// New version - BREAKING
+fn getQuantity(): int
+```
+
+**Issue**: New server might return negative integers, which old clients typed as `uint` can't handle.
+
+#### Adding Enum Values
+
+```sdkgen
+// Old version
+enum Status {
+  pending
+  completed
+}
+
+// New version - BREAKING
+enum Status {
+  pending
+  completed
+  cancelled
+}
+```
+
+**Issue**: Old clients don't know about `cancelled` and might crash when receiving it.
+
+**Error message**:
+```
+The enum at Status now has the value "cancelled" that didn't exist before. Client will crash if it receives it
+```
+
+## Safe Changes
+
+These changes are NOT breaking:
+
+### Adding Optional Arguments
+
+```sdkgen
+// Old version
+fn createUser(name: string): User
+
+// New version - SAFE
+fn createUser(name: string, email: email?): User
+```
+
+Old clients can continue without providing `email`.
+
+### Adding Optional Fields
+
+```sdkgen
+// Old version
+type User {
+  id: uuid
+  name: string
+}
+
+// New version - SAFE
+type User {
+  id: uuid
+  name: string
+  email: email?
+}
+```
+
+Old clients can ignore the new field.
+
+### Type Widening (Arguments)
+
+```sdkgen
+// Old version
+fn setQuantity(amount: uint): void
+
+// New version - SAFE
+fn setQuantity(amount: int): void
+```
+
+All `uint` values are valid `int` values.
+
+### Type Narrowing (Return)
+
+```sdkgen
+// Old version
+fn getQuantity(): int
+
+// New version - SAFE
+fn getQuantity(): uint
+```
+
+If old clients can handle any `int`, they can handle `uint`.
+
+### Adding New Functions
+
+```sdkgen
+// New version
+fn getUserV2(id: uuid): UserV2
+```
+
+Old clients simply won't call new functions.
+
+## Type Compatibility Matrix
+
+Some type conversions are always safe:
+
+### Client to Server (Safe Conversions)
+
+| From Type | To Type |
+|-----------|----------|
+| `uint` | `int`, `bigint` |
+| `int` | `float`, `bigint` |
+| `money` | `int`, `uint`, `bigint` |
+| `bigint` | `string` |
+| `uuid` | `string` |
+| `date` | `string` |
+| `datetime` | `string` |
+| `cpf`, `cnpj`, `email`, `url`, `hex`, `html`, `base64` | `string` |
+| `bytes` | `string`, `base64` |
+| `enum` | `string` |
+
+### Server to Client (Safe Conversions)
+
+| From Type | To Type |
+|-----------|----------|
+| `int` | `uint` |
+| `float` | `int` |
+| `int`, `uint` | `money` |
+| `bigint` | `uint`, `int`, `money` |
+| `string` | `bigint`, `uuid`, `date`, `datetime`, `cpf`, `cnpj`, `email`, `url`, `hex`, `html`, `base64`, `bytes`, `enum` |
+| `base64` | `bytes` |
+
+## CI/CD Integration
+
+Integrate compatibility checking into your continuous integration:
+
+### GitHub Actions
+
+```yaml
+name: API Compatibility Check
+
+on:
+  pull_request:
+    paths:
+      - 'src/api.sdkgen'
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm install -g @sdkgen/cli
+      
+      - name: Get base version
+        run: git show origin/main:src/api.sdkgen > /tmp/api-old.sdkgen
+      
+      - name: Check compatibility
+        run: sdkgen compatibility /tmp/api-old.sdkgen src/api.sdkgen
+```
+
+### GitLab CI
+
+```yaml
+api-compatibility:
+  stage: test
+  script:
+    - npm install -g @sdkgen/cli
+    - git show origin/main:src/api.sdkgen > /tmp/api-old.sdkgen
+    - sdkgen compatibility /tmp/api-old.sdkgen src/api.sdkgen
+  only:
+    changes:
+      - src/api.sdkgen
+```
+
+## Best Practices
+
+### Version Your API
+
+When making breaking changes, create a new version:
+
+```sdkgen
+// Keep old version
+fn getUser(id: uuid): User
+
+// Add new version
+fn getUserV2(id: uuid): UserV2
+```
+
+Mark old versions as deprecated:
+
+```sdkgen
+@description DEPRECATED: Use getUserV2 instead
+@hidden
+fn getUser(id: uuid): User
+
+fn getUserV2(id: uuid): UserV2
+```
+
+### Use Optional Fields
+
+When adding new fields, make them optional:
+
+```sdkgen
+type User {
+  id: uuid
+  name: string
+  // New field - optional for compatibility
+  phoneNumber: string?
+}
+```
+
+### Extend Enums Carefully
+
+Instead of adding enum values, consider using strings or adding new enums:
+
+```sdkgen
+// Instead of extending old enum
+enum OldStatus {
+  active
+  inactive
+}
+
+// Create new enum
+enum ExtendedStatus {
+  active
+  inactive
+  pending
+  suspended
+}
+
+// Use in new functions
+fn getUserStatusV2(id: uuid): ExtendedStatus
+```
+
+### Document Breaking Changes
+
+When you must make breaking changes:
+
+1. Document them in your changelog
+2. Notify API consumers in advance
+3. Provide migration guides
+4. Keep old versions running during transition
+5. Set deprecation timelines
+
+## Troubleshooting
+
+### False Positives
+
+Sometimes a change might be reported as breaking but is actually safe in your specific context. In these cases:
+
+1. Document why it's safe
+2. Consider the checker's perspective (it doesn't know your business logic)
+3. Proceed with caution
+
+### Unavoidable Breaking Changes
+
+If you must make breaking changes:
+
+1. Version your API (`getUserV2`)
+2. Maintain backward compatibility temporarily
+3. Communicate with API consumers
+4. Plan deprecation timeline
+5. Update documentation

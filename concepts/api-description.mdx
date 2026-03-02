@@ -1,0 +1,298 @@
+---
+title: "API Description Files"
+description: "Learn how to describe APIs using .sdkgen files"
+---
+
+sdkgen APIs are described in `.sdkgen` files. These files establish a clear contract between what a frontend can request and receive, and what requests the backend must handle.
+
+## File Structure
+
+A `.sdkgen` file can contain three types of declarations:
+
+1. **Type definitions** - Named types for reuse
+2. **Function declarations** - The operations your API exposes
+3. **Error definitions** - Expected error conditions
+
+### Basic Example
+
+```sdkgen
+error NotFound
+
+type User {
+  id: uuid
+  avatar: url?
+  name: string
+  type: enum {
+    guest
+    fullUser
+    admin
+  }
+}
+
+fn getUser(id: uuid): User
+```
+
+## Named Types
+
+Named types allow you to define reusable type definitions with the syntax `type TypeName Type`.
+
+### Simple Named Types
+
+```sdkgen
+type PersonName string
+type UserId uuid
+type Age uint
+```
+
+While any type can be named, this pattern is most commonly used with composite types and enums.
+
+### Composite Named Types
+
+```sdkgen
+type Person {
+  name: string
+  age: uint
+}
+
+type Address {
+  street: string
+  city: string
+  country: string
+  postalCode: string?
+}
+```
+
+### Enum Named Types
+
+```sdkgen
+type UserType enum {
+  guest
+  fullUser
+  admin
+}
+
+type Status enum {
+  pending
+  approved
+  rejected
+}
+```
+
+### Using Named Types
+
+Once defined, named types can be used anywhere a type is expected:
+
+```sdkgen
+type UserType enum {
+  guest
+  fullUser
+  admin
+}
+
+type User {
+  id: uuid
+  type: UserType
+  name: string
+}
+
+fn createUser(name: string, type: UserType): User
+```
+
+<Note>
+The order of type declarations doesn't matter - you can use a type before it's defined.
+</Note>
+
+## Type Declaration Rules
+
+### Duplicate Declarations
+
+A type name can be declared multiple times, but all declarations must be identical:
+
+```sdkgen
+// ✅ Valid - identical declarations
+type User { id: uuid, name: string }
+type User { id: uuid, name: string }
+
+// ❌ Invalid - conflicting declarations
+type User { id: uuid, name: string }
+type User { id: string, name: string }
+```
+
+### Recursive Types
+
+<Warning>
+Types cannot be recursive - a type cannot reference itself directly or indirectly.
+</Warning>
+
+```sdkgen
+// ❌ Invalid - direct recursion
+type Node {
+  value: int
+  next: Node?
+}
+
+// ❌ Invalid - indirect recursion
+type A { b: B }
+type B { a: A }
+```
+
+## Import Statements
+
+As your API grows, split it across multiple files using import statements:
+
+```sdkgen
+import "../user"
+import "./types/common"
+import "../../shared/errors"
+```
+
+### Import Rules
+
+- Paths are relative to the current file
+- Do not include the `.sdkgen` extension
+- Use standard path notation (`..` for parent directory, `./` for current)
+- Importing a file is equivalent to copying its contents into the current file
+
+<Warning>
+Avoid importing the same file multiple times to prevent duplicate declarations.
+</Warning>
+
+### Example File Organization
+
+```
+api/
+├── main.sdkgen
+├── types/
+│   ├── user.sdkgen
+│   ├── post.sdkgen
+│   └── common.sdkgen
+└── errors.sdkgen
+```
+
+**main.sdkgen:**
+```sdkgen
+import "./types/user"
+import "./types/post"
+import "./errors"
+
+fn getUser(id: uuid): User
+fn createPost(userId: uuid, content: string): Post
+```
+
+**types/user.sdkgen:**
+```sdkgen
+type User {
+  id: uuid
+  name: string
+  email: email
+}
+```
+
+**errors.sdkgen:**
+```sdkgen
+error NotFound
+error Unauthorized
+error InvalidInput
+```
+
+## Complete Example
+
+Here's a complete API description for a blog system:
+
+```sdkgen
+import "./types/user"
+import "./errors"
+
+type Post {
+  id: uuid
+  authorId: uuid
+  title: string
+  content: string
+  publishedAt: datetime?
+  tags: string[]
+}
+
+type Comment {
+  id: uuid
+  postId: uuid
+  authorId: uuid
+  content: string
+  createdAt: datetime
+}
+
+fn createPost(title: string, content: string, tags: string[]): Post
+fn getPost(id: uuid): Post
+fn updatePost(id: uuid, title: string?, content: string?): Post
+fn deletePost(id: uuid)
+
+fn addComment(postId: uuid, content: string): Comment
+fn getComments(postId: uuid): Comment[]
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Clear, Descriptive Names">
+    Type and function names should clearly indicate their purpose:
+    
+    ```sdkgen
+    // ✅ Good
+    type UserProfile { ... }
+    fn getUserById(id: uuid): User
+    
+    // ❌ Avoid
+    type UP { ... }
+    fn get(id: uuid): User
+    ```
+  </Accordion>
+
+  <Accordion title="Group Related Types">
+    Keep related types together, either in the same file or in logically organized imported files.
+    
+    ```sdkgen
+    // User-related types together
+    type User { ... }
+    type UserPreferences { ... }
+    type UserSession { ... }
+    ```
+  </Accordion>
+
+  <Accordion title="Define Errors Early">
+    Declare all expected errors at the top of your main API file or in a dedicated errors file.
+    
+    ```sdkgen
+    error NotFound
+    error Unauthorized
+    error InvalidInput
+    error RateLimitExceeded
+    ```
+  </Accordion>
+
+  <Accordion title="Use Type Composition">
+    Leverage spreads and named types to avoid repetition and maintain consistency.
+    
+    ```sdkgen
+    type Timestamps {
+      createdAt: datetime
+      updatedAt: datetime
+    }
+    
+    type Post {
+      id: uuid
+      title: string
+      ...Timestamps
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Type System" icon="shapes" href="/concepts/types">
+    Learn about all available types
+  </Card>
+  <Card title="Functions" icon="function" href="/concepts/functions">
+    Define API operations
+  </Card>
+</CardGroup>

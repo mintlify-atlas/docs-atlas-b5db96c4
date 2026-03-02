@@ -1,0 +1,88 @@
+---
+title: CLI Overview
+description: Overview of the sdkgen command-line interface
+---
+
+The sdkgen CLI is the primary tool for generating client and server SDKs from your API definition files. It parses `.sdkgen` files and generates type-safe code for multiple platforms and languages.
+
+## Installation
+
+Install the CLI globally using npm:
+
+```bash
+npm install -g @sdkgen/cli
+```
+
+Or use it directly with npx:
+
+```bash
+npx @sdkgen/cli [command] [options]
+```
+
+## Quick Start
+
+Generate a TypeScript Node.js server from your API definition:
+
+```bash
+sdkgen src/api.sdkgen -o src/api.ts -t typescript_nodeserver
+```
+
+This command:
+1. Parses your `src/api.sdkgen` file
+2. Generates TypeScript server code
+3. Outputs to `src/api.ts`
+
+## Available Commands
+
+The CLI provides two main commands:
+
+### Build Command (Default)
+
+Generate SDK code from API definition files. This is the default command when no command is specified.
+
+```bash
+sdkgen [sources...] -o <output> -t <target>
+```
+
+See [Commands](/cli/commands) for detailed options.
+
+### Compatibility Command
+
+Check for breaking changes between two API versions:
+
+```bash
+sdkgen compatibility --old src/old.sdkgen --new src/new.sdkgen
+```
+
+This helps ensure backward compatibility when evolving your API.
+
+## Workflow
+
+A typical sdkgen workflow:
+
+1. **Define your API** - Create a `.sdkgen` file with your API specification
+2. **Generate server code** - Use the CLI to generate server implementation
+3. **Implement handlers** - Write your business logic
+4. **Generate client SDKs** - Create clients for web, mobile, and other platforms
+5. **Check compatibility** - Verify changes don't break existing clients
+
+## Multiple Sources
+
+You can specify multiple source files to be parsed together:
+
+```bash
+sdkgen src/api.sdkgen src/types.sdkgen -o src/api.ts -t typescript_nodeserver
+```
+
+This is useful for splitting your API definition across multiple files.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Commands" icon="terminal" href="/cli/commands">
+    Learn about all available CLI commands and options
+  </Card>
+  <Card title="Targets" icon="bullseye" href="/cli/targets">
+    Explore all code generation targets
+  </Card>
+</CardGroup>

@@ -1,0 +1,425 @@
+---
+title: 'Browser Client'
+description: 'Use sdkgen in web applications with the browser runtime'
+---
+
+## Overview
+
+The browser runtime (`@sdkgen/browser-runtime`) provides a lightweight HTTP client for web applications. It uses `XMLHttpRequest` for compatibility and automatically handles device tracking via `localStorage`.
+
+## Installation
+
+The browser client is typically bundled with your generated API code:
+
+```bash
+npm install @sdkgen/browser-runtime
+```
+
+## Basic Usage
+
+### Importing the Client
+
+Your generated API file exports a client class that extends `SdkgenHttpClient`:
+
+```typescript
+import { ApiClient } from './api'; // Generated file
+
+const api = new ApiClient('https://api.example.com');
+```
+
+### Making API Calls
+
+Generated clients provide type-safe methods for each API function:
+
+```typescript
+// Example: Get user by ID
+const user = await api.getUser({ id: '123' });
+console.log(user.name, user.email);
+
+// Example: Create a new post
+const post = await api.createPost({
+  title: 'Hello World',
+  content: 'This is my first post',
+  authorId: user.id
+});
+```
+
+## SdkgenHttpClient API
+
+The browser client is built on the `SdkgenHttpClient` class from `browser-runtime/src/http-client.ts:40`.
+
+### Constructor
+
+```typescript
+class SdkgenHttpClient {
+  constructor(
+    baseUrl: string,
+    astJson: DeepReadonly<AstJson>,
+    errClasses: ErrClasses
+  )
+}
+```
+
+**Parameters:**
+- `baseUrl`: Your API endpoint (e.g., `'https://api.example.com'`)
+- `astJson`: Generated API schema (automatically included in generated code)
+- `errClasses`: Error class mappings (automatically included in generated code)
+
+### Properties
+
+#### extra
+
+Map for passing additional metadata with every request:
+
+```typescript
+api.extra.set('authToken', localStorage.getItem('token'));
+api.extra.set('version', '1.0.0');
+```
+
+All entries in `extra` are sent with every subsequent request.
+
+#### successHook
+
+Callback invoked after successful API calls:
+
+```typescript
+api.successHook = (result, functionName, args) => {
+  console.log(`✓ ${functionName} succeeded`, result);
+  
+  // Example: Track analytics
+  analytics.track('api_call_success', {
+    function: functionName,
+    duration: Date.now() - startTime
+  });
+};
+```
+
+#### errorHook
+
+Callback invoked when API calls fail:
+
+```typescript
+api.errorHook = (error, functionName, args) => {
+  console.error(`✗ ${functionName} failed`, error);
+  
+  // Example: Send to error tracking service
+  Sentry.captureException(error, {
+    extra: { functionName, args }
+  });
+};
+```
+
+### Methods
+
+#### makeRequest
+
+```typescript
+async makeRequest(functionName: string, args: unknown): Promise<any>
+```
+
+Low-level method for making API calls. Usually, you'll use the generated type-safe methods instead.
+
+**Example:**
+```typescript
+const result = await api.makeRequest('getUser', { id: '123' });
+```
+
+## Device Tracking
+
+The browser client automatically generates and persists a unique device ID using `localStorage`:
+
+```typescript
+// First visit: generates random ID
+// localStorage.setItem('deviceId', '<random-hex>');
+
+// Subsequent visits: reuses same ID
+const deviceId = localStorage.getItem('deviceId');
+```
+
+The device ID is sent with every request in the `deviceInfo` field from `browser-runtime/src/http-client.ts:69`:
+
+```json
+{
+  "id": "a1b2c3d4e5f6789...",
+  "type": "web",
+  "language": "en-US",
+  "timezone": "America/New_York",
+  "platform": {
+    "browserUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)..."
+  },
+  "version": "https://cdn.example.com/app.js"
+}
+```
+
+### Accessing Device Info
+
+Device information includes:
+- **id**: Persistent device identifier
+- **language**: Browser language (`navigator.language`)
+- **timezone**: User's timezone (from `Intl.DateTimeFormat`)
+- **browserUserAgent**: Full user agent string
+- **version**: URL of the script tag (if available)
+
+## Error Handling
+
+The browser client transforms API errors into proper exception instances:
+
+### Error Types
+
+```typescript
+import { SdkgenError, SdkgenErrorWithData } from '@sdkgen/browser-runtime';
+
+// Base error class
+abstract class SdkgenError extends Error {
+  get type(): string;
+  toJSON(): { message: string; type: string };
+}
+
+// Error with additional typed data
+abstract class SdkgenErrorWithData<DataType> extends SdkgenError {
+  data: DataType;
+  toJSON(): { data: DataType; message: string; type: string };
+}
+```
+
+### Handling Errors
+
+```typescript
+try {
+  const user = await api.getUser({ id: 'invalid-id' });
+} catch (error) {
+  if (error instanceof ValidationError) {
+    // ValidationError extends SdkgenErrorWithData
+    console.error('Validation failed:', error.message);
+    console.error('Field errors:', error.data.fields);
+  } else if (error instanceof NotFoundError) {
+    console.error('User not found');
+  } else if (error instanceof Fatal) {
+    // Network or connection error
+    console.error('Connection failed:', error.message);
+  } else {
+    // Unexpected error
+    console.error('Unknown error:', error);
+  }
+}
+```
+
+### Fatal Errors
+
+Fatal errors are thrown for:
+- Network failures
+- JSON parsing errors
+- Connection timeouts
+- Invalid responses
+
+From `browser-runtime/src/http-client.ts:111`:
+```typescript
+// Connection failure
+{ message: "Falha de conexão com o servidor", type: "Fatal" }
+
+// Parsing error
+{ message: "<error-details>", type: "Fatal" }
+```
+
+## Advanced Usage
+
+### Authentication
+
+Add authentication tokens to all requests:
+
+```typescript
+const api = new ApiClient('https://api.example.com');
+
+// Set auth token
+api.extra.set('authorization', `Bearer ${token}`);
+
+// Or for session-based auth
+api.extra.set('sessionId', sessionId);
+```
+
+### Request Interceptors
+
+Use hooks to intercept all requests:
+
+```typescript
+// Log all successful calls
+api.successHook = (result, name, args) => {
+  console.log(`[${new Date().toISOString()}] ${name}`, { args, result });
+};
+
+// Handle all errors globally
+api.errorHook = (error, name, args) => {
+  // Show user-friendly error message
+  if (error.type === 'ValidationError') {
+    showToast('Please check your input and try again');
+  } else if (error.type === 'Unauthorized') {
+    redirectToLogin();
+  } else if (error.type === 'Fatal') {
+    showToast('Connection error. Please try again.');
+  }
+};
+```
+
+### Request Metadata
+
+Send additional context with requests:
+
+```typescript
+// Track user session
+api.extra.set('sessionId', currentSession.id);
+api.extra.set('pageUrl', window.location.href);
+api.extra.set('referrer', document.referrer);
+
+// A/B testing variant
+api.extra.set('variant', 'new-checkout');
+
+// Feature flags
+api.extra.set('features', JSON.stringify(enabledFeatures));
+```
+
+### Custom Base URL
+
+Switch between environments:
+
+```typescript
+const baseUrl = process.env.NODE_ENV === 'production'
+  ? 'https://api.example.com'
+  : 'http://localhost:8000';
+
+const api = new ApiClient(baseUrl);
+```
+
+## Request Format
+
+Requests are sent as POST to `{baseUrl}/{functionName}` with `Content-Type: application/sdkgen`:
+
+```http
+POST /getUser HTTP/1.1
+Host: api.example.com
+Content-Type: application/sdkgen
+
+{
+  "version": 3,
+  "name": "getUser",
+  "requestId": "a1b2c3d4e5f67890",
+  "args": {
+    "id": "123"
+  },
+  "deviceInfo": {
+    "id": "device-id-here",
+    "type": "web",
+    "language": "en-US",
+    "timezone": "America/New_York",
+    "platform": {
+      "browserUserAgent": "Mozilla/5.0..."
+    },
+    "version": ""
+  },
+  "extra": {
+    "authToken": "bearer-token-123"
+  }
+}
+```
+
+## Response Format
+
+Successful responses:
+```json
+{
+  "result": {
+    "id": "123",
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+}
+```
+
+Error responses:
+```json
+{
+  "error": {
+    "type": "NotFound",
+    "message": "User not found",
+    "data": null
+  }
+}
+```
+
+## Browser Compatibility
+
+The browser runtime uses `XMLHttpRequest`, which is supported in:
+
+- Chrome (all versions)
+- Firefox (all versions)
+- Safari (all versions)
+- Edge (all versions)
+- Internet Explorer 11+
+
+For modern browsers, the generated code works with ES6+ features. Use Babel/TypeScript for older browser support.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use environment variables for API URLs">
+    ```typescript
+    const api = new ApiClient(import.meta.env.VITE_API_URL);
+    ```
+  </Accordion>
+  
+  <Accordion title="Set auth tokens after login">
+    ```typescript
+    async function login(email: string, password: string) {
+      const { token } = await api.authenticate({ email, password });
+      api.extra.set('authorization', `Bearer ${token}`);
+      localStorage.setItem('authToken', token);
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle errors consistently">
+    ```typescript
+    api.errorHook = (error, name, args) => {
+      // Log to monitoring service
+      errorTracking.capture(error, { function: name, args });
+      
+      // Show user feedback
+      if (error.type !== 'Fatal') {
+        toast.error(error.message);
+      }
+    };
+    ```
+  </Accordion>
+  
+  <Accordion title="Create a singleton instance">
+    ```typescript
+    // api.ts
+    export const api = new ApiClient(import.meta.env.VITE_API_URL);
+    
+    // Restore auth token on page load
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      api.extra.set('authorization', `Bearer ${token}`);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/concepts/errors">
+    Learn about custom error types and error handling patterns
+  </Card>
+  
+  <Card title="Node.js Client" icon="node-js" href="/client/nodejs">
+    Use sdkgen for server-to-server communication
+  </Card>
+  
+  <Card title="Types" icon="code" href="/concepts/types">
+    Understand sdkgen type system and encoding
+  </Card>
+  
+  <Card title="Functions" icon="function" href="/concepts/functions">
+    Define API functions in your .sdkgen file
+  </Card>
+</CardGroup>

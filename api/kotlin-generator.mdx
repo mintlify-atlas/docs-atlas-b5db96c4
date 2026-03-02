@@ -1,0 +1,269 @@
+---
+title: Kotlin Generator
+description: API reference for the Kotlin code generator
+---
+
+The Kotlin generator creates client code for Android applications from your API schema.
+
+## Installation
+
+```bash
+npm install @sdkgen/kotlin-generator
+```
+
+## Functions
+
+### generateAndroidClientSource
+
+Generates Kotlin client code for Android applications.
+
+```typescript
+function generateAndroidClientSource(
+  ast: AstRoot,
+  shouldImplementCallbacks: boolean
+): string
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The parsed API schema from `@sdkgen/parser`
+</ParamField>
+
+<ParamField path="shouldImplementCallbacks" type="boolean" required>
+  Whether to generate callback-based methods in addition to coroutine-based ones
+</ParamField>
+
+**Returns:** Generated Kotlin source code as a string
+
+**Output includes:**
+- Parcelable enum classes for all enum types
+- Parcelable data classes for all struct types
+- Exception classes for all custom errors (plus `Connection` error)
+- `ApiClient` class extending `SdkgenHttpClient`
+- Coroutine-based methods returning `Deferred<Response<T>>`
+- Optional callback-based methods (if `shouldImplementCallbacks` is true)
+- `ErrorType` enum for type-safe error handling
+- `Response<T>` wrapper with error, data, and stats
+
+**Dependencies:**
+- `io.sdkgen.runtime:SdkgenHttpClient` - Required for HTTP client functionality
+- `com.google.code.gson:gson` - For JSON serialization
+- `com.squareup.okhttp3:okhttp` - For HTTP requests
+- `org.jetbrains.kotlinx:kotlinx-coroutines-core` - For coroutines
+- Android Parcelable support via `kotlinx-parcelize`
+
+## Generated Code Structure
+
+### Enum Types
+
+Enums are generated as sealed classes or enums:
+
+```kotlin
+enum class Color {
+    @SerializedName("red") RED,
+    @SerializedName("green") GREEN,
+    @SerializedName("blue") BLUE
+}
+```
+
+### Struct Types
+
+Structs become Parcelable data classes:
+
+```kotlin
+@Parcelize
+data class User(
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String,
+    @SerializedName("email") val email: String?
+) : Parcelable
+```
+
+### Error Classes
+
+```kotlin
+open class Error(val message: String? = null)
+
+data class UserNotFoundError(
+    val msg: String? = null
+) : ApiClient.Error(msg)
+```
+
+### API Client
+
+The `ApiClient` constructor accepts multiple configuration options:
+
+```kotlin
+class ApiClient(
+    baseUrl: String,
+    val applicationContext: Context,
+    defaultTimeoutMillis: Long = 10000L,
+    fingerprint: String? = null,
+    httpInterceptor: Interceptor? = null,
+    httpNetworkInterceptor: Interceptor? = null
+) : SdkgenHttpClient(...)
+```
+
+### Response Type
+
+```kotlin
+data class Response<T>(
+    val error: Error?,
+    val data: T?,
+    val stats: CallStats?
+)
+```
+
+## Usage
+
+The Kotlin generator is typically invoked via the sdkgen CLI:
+
+```bash
+# Without callbacks
+sdkgen api.sdkgen -o ApiClient.kt -t kotlin_android
+
+# With callbacks
+sdkgen api.sdkgen -o ApiClient.kt -t kotlin_android --callbacks
+```
+
+## Programmatic Usage
+
+```typescript
+import { parse } from "@sdkgen/parser";
+import { generateAndroidClientSource } from "@sdkgen/kotlin-generator";
+import { readFileSync, writeFileSync } from "fs";
+
+const source = readFileSync("api.sdkgen", "utf-8");
+const ast = parse(source);
+
+// Generate without callbacks
+const kotlinCode = generateAndroidClientSource(ast, false);
+
+// Generate with callbacks
+const kotlinCodeWithCallbacks = generateAndroidClientSource(ast, true);
+
+writeFileSync("ApiClient.kt", kotlinCode);
+```
+
+## Client Usage Example
+
+### Coroutine-based (recommended)
+
+```kotlin
+import kotlinx.coroutines.*
+
+class MyActivity : AppCompatActivity() {
+    private val api = ApiClient(
+        baseUrl = "https://api.example.com",
+        applicationContext = applicationContext
+    )
+
+    fun loadUser() {
+        lifecycleScope.launch {
+            val response = api.getUser(userId = "123").await()
+            
+            when {
+                response.error != null -> {
+                    when (response.error) {
+                        is ApiClient.UserNotFoundError -> 
+                            showError("User not found")
+                        else -> 
+                            showError("Error: ${response.error.message}")
+                    }
+                }
+                response.data != null -> {
+                    showUser(response.data)
+                }
+            }
+        }
+    }
+}
+```
+
+### Callback-based (if enabled)
+
+```kotlin
+api.getUser(
+    userId = "123",
+    callback = { response ->
+        runOnUiThread {
+            when {
+                response.error != null -> 
+                    showError(response.error.message)
+                response.data != null -> 
+                    showUser(response.data)
+            }
+        }
+    }
+)
+```
+
+## Method Signatures
+
+### Without Callbacks
+
+```kotlin
+fun operationName(
+    param1: Type1,
+    param2: Type2,
+    timeoutMillis: Long? = null
+): Deferred<Response<out ReturnType>>
+```
+
+### With Callbacks
+
+```kotlin
+fun operationName(
+    param1: Type1,
+    param2: Type2,
+    timeoutMillis: Long? = null,
+    callback: ((response: Response<ReturnType>) -> Unit)? = null
+): Deferred<Response<out ReturnType>>
+```
+
+## Error Type Enum
+
+```kotlin
+enum class ErrorType {
+    Connection,
+    UserNotFound,
+    Fatal;
+
+    fun type(): Class<out ApiClient.Error> {
+        return when (this) {
+            Connection -> ApiClient.Connection::class.java
+            UserNotFound -> ApiClient.UserNotFound::class.java
+            Fatal -> ApiClient.Fatal::class.java
+            else -> ApiClient.Error::class.java
+        }
+    }
+}
+```
+
+## Type Mapping
+
+| sdkgen Type | Kotlin Type |
+|-------------|-------------|
+| `string` | `String` |
+| `int` | `Int` |
+| `uint` | `Long` |
+| `float` | `Double` |
+| `bool` | `Boolean` |
+| `bytes` | `ByteArray` |
+| `bigint` | `BigInteger` |
+| `date` | `LocalDate` |
+| `datetime` | `ZonedDateTime` |
+| `void` | `Unit` |
+| Custom struct | Generated data class |
+| Custom enum | Generated enum |
+| `T?` | `T?` (nullable) |
+| `T[]` | `List<T>` |
+
+## Parcelable Support
+
+All generated data classes and enums are Parcelable, allowing them to be passed between Android components:
+
+```kotlin
+val intent = Intent(this, DetailActivity::class.java)
+intent.putExtra("user", user) // User is Parcelable
+startActivity(intent)
+```

@@ -1,0 +1,576 @@
+---
+title: "Node.js Runtime API Reference"
+description: "Complete API reference for the sdkgen Node.js runtime package"
+---
+
+# Node.js Runtime API
+
+The `@sdkgen/node-runtime` package provides server and client runtime components for building and consuming sdkgen APIs in Node.js.
+
+## Installation
+
+```bash
+npm install @sdkgen/node-runtime
+```
+
+## Exports
+
+```typescript
+export { BaseApiConfig } from "./api-config";
+export { Context, ContextReply, ContextRequest } from "./context";
+export { decode, encode, DecodedType, EncodedType } from "./encode-decode";
+export { Fatal, SdkgenError, SdkgenErrorWithData } from "./error";
+export { SdkgenHttpClient } from "./http-client";
+export { SdkgenHttpServer } from "./http-server";
+export { apiTestWrapper } from "./test-wrapper";
+```
+
+---
+
+## SdkgenHttpServer
+
+HTTP server implementation for hosting sdkgen APIs.
+
+### Constructor
+
+```typescript
+constructor(
+  apiConfig: BaseApiConfig<ExtraContextT>,
+  ...maybeExtraContext: {} extends ExtraContextT ? [{}?] : [ExtraContextT]
+)
+```
+
+<ParamField path="apiConfig" type="BaseApiConfig<ExtraContextT>" required>
+  The API configuration containing AST, functions, and middlewares
+</ParamField>
+
+<ParamField path="maybeExtraContext" type="ExtraContextT">
+  Optional extra context to be merged into every request context
+</ParamField>
+
+### Properties
+
+<ParamField path="httpServer" type="Server">
+  The underlying Node.js HTTP server instance
+</ParamField>
+
+<ParamField path="dynamicCorsOrigin" type="boolean" default="true">
+  Automatically allow CORS requests from any origin
+</ParamField>
+
+<ParamField path="introspection" type="boolean" default="true">
+  Enable introspection endpoints (playground, AST, code generation)
+</ParamField>
+
+<ParamField path="log" type="(message: string) => void">
+  Function for logging requests. Default logs to console with timestamp
+</ParamField>
+
+<ParamField path="logError" type="(...error: unknown[]) => void">
+  Function for logging errors. Default is console.error
+</ParamField>
+
+### Methods
+
+#### listen()
+
+Start the HTTP server on the specified port.
+
+```typescript
+async listen(port?: number): Promise<void>
+```
+
+<ParamField path="port" type="number" default="8000">
+  Port number to listen on
+</ParamField>
+
+**Example:**
+
+```typescript
+import { SdkgenHttpServer } from "@sdkgen/node-runtime";
+import { api } from "./api";
+
+const server = new SdkgenHttpServer(api);
+await server.listen(3000);
+```
+
+#### close()
+
+Stop the HTTP server.
+
+```typescript
+async close(): Promise<void>
+```
+
+#### addHeader()
+
+Add a custom HTTP header to all responses.
+
+```typescript
+addHeader(header: string, value: string): void
+```
+
+<ParamField path="header" type="string" required>
+  Header name (case-insensitive)
+</ParamField>
+
+<ParamField path="value" type="string" required>
+  Header value to set
+</ParamField>
+
+**Example:**
+
+```typescript
+server.addHeader("X-API-Version", "1.0");
+```
+
+#### addHttpHandler()
+
+Add a custom HTTP route handler.
+
+```typescript
+addHttpHandler(
+  method: string,
+  matcher: string | RegExp,
+  handler: (req: IncomingMessage, res: ServerResponse, body: Buffer) => void
+): void
+```
+
+<ParamField path="method" type="string" required>
+  HTTP method (GET, POST, PUT, DELETE, etc.)
+</ParamField>
+
+<ParamField path="matcher" type="string | RegExp" required>
+  Path string or regular expression to match
+</ParamField>
+
+<ParamField path="handler" type="Function" required>
+  Request handler function
+</ParamField>
+
+**Example:**
+
+```typescript
+server.addHttpHandler("GET", "/custom", (req, res, body) => {
+  res.statusCode = 200;
+  res.write(JSON.stringify({ message: "Hello" }));
+  res.end();
+});
+```
+
+#### registerHealthCheck()
+
+Register a custom health check function.
+
+```typescript
+registerHealthCheck(healthCheck: () => Promise<boolean>): void
+```
+
+<ParamField path="healthCheck" type="() => Promise<boolean>" required>
+  Async function that returns true if healthy, false otherwise
+</ParamField>
+
+**Example:**
+
+```typescript
+server.registerHealthCheck(async () => {
+  const dbHealthy = await checkDatabase();
+  return dbHealthy;
+});
+```
+
+#### ignoreUrlPrefix()
+
+Ignore a URL prefix when routing requests.
+
+```typescript
+ignoreUrlPrefix(urlPrefix: string): void
+```
+
+<ParamField path="urlPrefix" type="string" required>
+  URL prefix to strip from incoming requests
+</ParamField>
+
+**Example:**
+
+```typescript
+server.ignoreUrlPrefix("/api/v1");
+```
+
+---
+
+## SdkgenHttpClient
+
+HTTP client for making requests to sdkgen APIs.
+
+### Constructor
+
+```typescript
+constructor(
+  baseUrl: string,
+  astJson: DeepReadonly<AstJson>,
+  errClasses: ErrClasses
+)
+```
+
+<ParamField path="baseUrl" type="string" required>
+  Base URL of the API server
+</ParamField>
+
+<ParamField path="astJson" type="AstJson" required>
+  The API's AST JSON definition
+</ParamField>
+
+<ParamField path="errClasses" type="Record<string, ErrorClass>" required>
+  Map of error class names to error constructors
+</ParamField>
+
+### Properties
+
+<ParamField path="extra" type="Map<string, unknown>">
+  Extra data to send with every request
+</ParamField>
+
+### Methods
+
+#### makeRequest()
+
+Make an API request.
+
+```typescript
+async makeRequest(
+  ctx: PartialDeep<Context> | null,
+  functionName: string,
+  args: unknown
+): Promise<any>
+```
+
+<ParamField path="ctx" type="PartialDeep<Context> | null" required>
+  Request context (can be partial or null)
+</ParamField>
+
+<ParamField path="functionName" type="string" required>
+  Name of the API function to call
+</ParamField>
+
+<ParamField path="args" type="unknown" required>
+  Arguments to pass to the function
+</ParamField>
+
+<ResponseField name="result" type="any">
+  The decoded response from the server
+</ResponseField>
+
+**Example:**
+
+```typescript
+import { SdkgenHttpClient } from "@sdkgen/node-runtime";
+import { astJson, Fatal } from "./api";
+
+const client = new SdkgenHttpClient(
+  "http://localhost:3000",
+  astJson,
+  { Fatal }
+);
+
+const result = await client.makeRequest(null, "getUser", { id: 123 });
+```
+
+---
+
+## BaseApiConfig
+
+Base configuration class for sdkgen APIs.
+
+### Properties
+
+<ParamField path="ast" type="AstRoot">
+  The parsed AST (lazily computed from astJson)
+</ParamField>
+
+<ParamField path="astJson" type="AstJson" required>
+  The API's AST in JSON format
+</ParamField>
+
+<ParamField path="fn" type="Record<string, Function>">
+  Map of function names to implementation functions
+</ParamField>
+
+<ParamField path="middlewares" type="Array<Middleware<ExtraContextT>>">
+  Array of middleware functions
+</ParamField>
+
+### Methods
+
+#### use()
+
+Register a middleware function.
+
+```typescript
+use(middleware: Middleware<ExtraContextT>): void
+```
+
+<ParamField path="middleware" type="Middleware<ExtraContextT>" required>
+  Middleware function to register
+</ParamField>
+
+**Middleware signature:**
+
+```typescript
+type Middleware<ExtraContextT> = (
+  ctx: Context & ExtraContextT,
+  next: () => Promise<ContextReply>
+) => Promise<ContextReply>
+```
+
+**Example:**
+
+```typescript
+api.use(async (ctx, next) => {
+  console.log(`Request: ${ctx.request.name}`);
+  const reply = await next();
+  console.log(`Response: ${reply.error ? 'error' : 'success'}`);
+  return reply;
+});
+```
+
+---
+
+## Context
+
+Request context available in API functions and middlewares.
+
+### ContextRequest
+
+<ParamField path="name" type="string">
+  Name of the function being called
+</ParamField>
+
+<ParamField path="args" type="Record<string, unknown>">
+  Decoded function arguments
+</ParamField>
+
+<ParamField path="deviceInfo" type="object">
+  Information about the client device
+  
+  <ParamField path="id" type="string">Device identifier</ParamField>
+  <ParamField path="type" type="string">Device type (e.g., "web", "mobile", "node")</ParamField>
+  <ParamField path="language" type="string | null">Client language</ParamField>
+  <ParamField path="platform" type="unknown">Platform details</ParamField>
+  <ParamField path="timezone" type="string | null">Client timezone</ParamField>
+  <ParamField path="version" type="string | null">Client version</ParamField>
+  <ParamField path="fingerprint" type="string | null">Device fingerprint</ParamField>
+</ParamField>
+
+<ParamField path="extra" type="Record<string, unknown>">
+  Extra data sent by the client
+</ParamField>
+
+<ParamField path="headers" type="IncomingHttpHeaders">
+  HTTP request headers
+</ParamField>
+
+<ParamField path="id" type="string">
+  Unique request identifier
+</ParamField>
+
+<ParamField path="ip" type="string">
+  Client IP address
+</ParamField>
+
+<ParamField path="query" type="string | null">
+  Query string from the URL
+</ParamField>
+
+<ParamField path="version" type="number">
+  Protocol version (1, 2, or 3)
+</ParamField>
+
+<ParamField path="files" type="Array<{name: string, contents: Readable}>">
+  Uploaded files (for multipart requests)
+</ParamField>
+
+### ContextResponse
+
+<ParamField path="statusCode" type="number">
+  HTTP status code to return (optional)
+</ParamField>
+
+<ParamField path="headers" type="Map<string, OutgoingHttpHeader>">
+  HTTP response headers to set
+</ParamField>
+
+### Context Interface
+
+```typescript
+interface Context {
+  request: ContextRequest;
+  response: ContextResponse;
+}
+```
+
+**Example usage in API function:**
+
+```typescript
+api.fn.getUserById = async (ctx, { id }) => {
+  console.log(`Request from IP: ${ctx.request.ip}`);
+  ctx.response.headers.set("X-User-Id", id.toString());
+  
+  return await db.users.findById(id);
+};
+```
+
+---
+
+## Error Classes
+
+### SdkgenError
+
+Base class for all sdkgen errors.
+
+```typescript
+abstract class SdkgenError extends Error {
+  get type(): string;
+  toJSON(): { message: string; type: string };
+}
+```
+
+<ParamField path="type" type="string">
+  Error type (defaults to constructor name)
+</ParamField>
+
+### SdkgenErrorWithData
+
+Error class with typed data payload.
+
+```typescript
+abstract class SdkgenErrorWithData<DataType> extends SdkgenError {
+  constructor(message: string, data: DataType);
+  data: DataType;
+  toJSON(): { data: DataType; message: string; type: string };
+}
+```
+
+<ParamField path="data" type="DataType">
+  Error data payload
+</ParamField>
+
+### Fatal
+
+Built-in error for fatal/unexpected errors.
+
+```typescript
+class Fatal extends SdkgenError {}
+```
+
+**Example:**
+
+```typescript
+import { Fatal, SdkgenErrorWithData } from "@sdkgen/node-runtime";
+
+// Simple error
+throw new Fatal("Database connection failed");
+
+// Custom error with data
+class ValidationError extends SdkgenErrorWithData<{ field: string }> {}
+
+throw new ValidationError("Invalid input", { field: "email" });
+```
+
+---
+
+## Encode/Decode
+
+Type-safe encoding and decoding functions for sdkgen types.
+
+### encode()
+
+Encode a value for transmission.
+
+```typescript
+function encode<Table, Type>(
+  typeTable: Table,
+  path: string,
+  type: Type,
+  value: unknown
+): EncodedType<Type, Table>
+```
+
+<ParamField path="typeTable" type="TypeTable" required>
+  Type lookup table from AST
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  Path for error messages (e.g., "functionName.args")
+</ParamField>
+
+<ParamField path="type" type="TypeDescription" required>
+  Type definition to encode to
+</ParamField>
+
+<ParamField path="value" type="unknown" required>
+  Value to encode
+</ParamField>
+
+### decode()
+
+Decode a value from transmission format.
+
+```typescript
+function decode<Table, Type>(
+  typeTable: Table,
+  path: string,
+  type: Type,
+  value: unknown
+): DecodedType<Type, Table>
+```
+
+<ParamField path="typeTable" type="TypeTable" required>
+  Type lookup table from AST
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  Path for error messages
+</ParamField>
+
+<ParamField path="type" type="TypeDescription" required>
+  Type definition to decode from
+</ParamField>
+
+<ParamField path="value" type="unknown" required>
+  Value to decode
+</ParamField>
+
+**Example:**
+
+```typescript
+import { encode, decode } from "@sdkgen/node-runtime";
+import { astJson } from "./api";
+
+// Encode a date
+const encoded = encode(astJson.typeTable, "test", "date", new Date("2026-01-15"));
+// Result: "2026-01-15"
+
+// Decode a date
+const decoded = decode(astJson.typeTable, "test", "date", "2026-01-15");
+// Result: Date object
+```
+
+---
+
+## Introspection Endpoints
+
+When `introspection` is enabled, the server provides these endpoints:
+
+- `GET /playground` - Interactive API playground
+- `GET /ast.json` - API AST definition
+- `GET /targets/node/api.ts` - Generated Node.js server code
+- `GET /targets/node/client.ts` - Generated Node.js client code
+- `GET /targets/web/client.ts` - Generated browser client code
+- `GET /targets/android/client.kt` - Generated Android client code
+- `GET /targets/ios/client.swift` - Generated iOS client code
+- `GET /targets/flutter/client.dart` - Generated Flutter client code
+
+**Health Check:**
+
+- `GET /` - Returns `{"ok": true}` if server is healthy

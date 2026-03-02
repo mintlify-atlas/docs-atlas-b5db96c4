@@ -1,0 +1,443 @@
+---
+title: "Type System"
+description: "Complete reference for sdkgen's type system including primitives, modifiers, and composite types"
+---
+
+The sdkgen type system provides a comprehensive set of types for describing data in your API. Understanding the type grammar is essential for creating effective API descriptions.
+
+## Primitive Types
+
+sdkgen includes 21 primitive types, each with specific validation rules:
+
+| Type | Description |
+| --- | --- |
+| `string` | Free-form UTF-8 text, potentially multi-line |
+| `int` | 32-bit signed integer (-2,147,483,648 to 2,147,483,647) |
+| `uint` | 32-bit unsigned integer (0 to 4,294,967,295) |
+| `bigint` | Arbitrary precision integer (unlimited range, more costly) |
+| `float` | 64-bit floating point number (similar to C `double`) |
+| `money` | Extended precision integer for financial operations (-9,007,199,254,740,991 to 9,007,199,254,740,991) |
+| `decimal` | Decimal number with dynamic precision for financial calculations |
+| `bool` | Boolean value: `true` or `false` |
+| `json` | Any valid JSON value (objects, arrays, strings, numbers, booleans) at any depth |
+| `date` | Gregorian calendar date (represents different moments depending on timezone) |
+| `datetime` | Instant in time with millisecond precision (always converted to receiver's local timezone) |
+| `bytes` | Arbitrary sequence of bytes of any length (for binary data) |
+| `base64` | String containing valid Base64 encoding |
+| `url` | String containing a valid URL |
+| `hex` | String with even number of hexadecimal characters (useful for representing bytes) |
+| `uuid` | String containing a valid UUID |
+| `email` | String containing a valid email address |
+| `xml` | String containing valid XML |
+| `html` | String containing valid HTML |
+| `cpf` | String containing a valid Brazilian CPF (tax ID) |
+| `cnpj` | String containing a valid Brazilian CNPJ (business tax ID) |
+
+### Numeric Types
+
+<AccordionGroup>
+  <Accordion title="Integer Types">
+    sdkgen provides multiple integer types for different use cases:
+    
+    **`int`** - Standard 32-bit signed integer
+    ```sdkgen
+    type Counter {
+      value: int  // -2147483648 to 2147483647
+    }
+    ```
+    
+    **`uint`** - Unsigned integer for non-negative values
+    ```sdkgen
+    type Person {
+      age: uint  // 0 to 4294967295
+    }
+    ```
+    
+    **`bigint`** - Unlimited precision for large numbers
+    ```sdkgen
+    type LargeNumber {
+      value: bigint  // No limits, but more expensive
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Financial Types">
+    For financial operations, use `money` or `decimal`:
+    
+    **`money`** - High-performance integer with extended precision
+    ```sdkgen
+    type Transaction {
+      amount: money  // -9007199254740991 to 9007199254740991
+    }
+    ```
+    
+    **`decimal`** - Dynamic precision for fractional values
+    ```sdkgen
+    type Price {
+      value: decimal  // Supports decimal digits
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Floating Point">
+    **`float`** - 64-bit floating point
+    ```sdkgen
+    type Coordinates {
+      latitude: float
+      longitude: float
+    }
+    ```
+    
+    <Warning>
+    For financial calculations, prefer `money` or `decimal` over `float` to avoid precision issues.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+### String Types
+
+String-based types with validation:
+
+```sdkgen
+type Contact {
+  name: string        // Any UTF-8 text
+  email: email        // Must be valid email
+  website: url        // Must be valid URL
+  id: uuid            // Must be valid UUID
+}
+```
+
+### Date and Time Types
+
+<Info>
+Use `date` for calendar dates and `datetime` for specific moments in time.
+</Info>
+
+```sdkgen
+type Event {
+  eventDate: date       // Calendar date (timezone-dependent)
+  createdAt: datetime   // Specific moment with millisecond precision
+}
+```
+
+### Binary Data Types
+
+```sdkgen
+type FileData {
+  content: bytes        // Raw binary data
+  encoded: base64       // Base64-encoded data
+  checksum: hex         // Hexadecimal string
+}
+```
+
+### JSON Type
+
+The `json` type accepts any valid JSON structure:
+
+```sdkgen
+type Metadata {
+  data: json  // Any JSON: objects, arrays, primitives
+}
+```
+
+<Note>
+While `null` can appear inside JSON objects or arrays, the field value itself cannot be `null` unless you use `json?`.
+</Note>
+
+### Brazilian Document Types
+
+```sdkgen
+type BrazilianEntity {
+  personalId: cpf?      // Valid CPF (individuals)
+  businessId: cnpj?     // Valid CNPJ (businesses)
+}
+```
+
+## Type Modifiers
+
+sdkgen provides two type modifiers that can be applied to any type: `?` (optional) and `[]` (array).
+
+### Optional Modifier (`?`)
+
+By default, all types are required and `null` is not a valid value. The `?` modifier makes a type nullable:
+
+```sdkgen
+type User {
+  id: uuid          // Required
+  name: string      // Required
+  avatar: url?      // Optional - can be a valid URL or null
+  bio: string?      // Optional - can be text or null
+}
+```
+
+### Array Modifier (`[]`)
+
+The `[]` modifier creates a list (array) of the specified type:
+
+```sdkgen
+type Post {
+  id: uuid
+  tags: string[]        // Array of strings (can be empty)
+  comments: Comment[]   // Array of Comment objects
+}
+```
+
+### Combining Modifiers
+
+Modifiers can be combined and repeated freely:
+
+```sdkgen
+type Examples {
+  // Optional array of integers
+  numbers: int[]?       // Can be null OR an array of ints
+  
+  // Array of optional strings
+  names: string?[]      // Array where each element can be string or null
+  
+  // 2D array of strings
+  matrix: string[][]    // Array of arrays of strings
+  
+  // Optional array of optional booleans
+  flags: bool?[]?       // Can be null OR an array of (bool or null)
+}
+```
+
+<Warning>
+**Important distinction:**
+- `int[]?` - The entire array can be null
+- `int?[]` - The array exists but elements can be null
+- `int?[]?` - The array can be null AND elements can be null
+</Warning>
+
+## Composite Types
+
+Composite types (objects/structures) are built using a sequence of fields between curly braces:
+
+```sdkgen
+{
+  name: string
+  age: uint
+}
+```
+
+### Field Rules
+
+- Fields can appear in any order
+- Field names must be unique within a type
+- Any type is valid for a field (including other composite types)
+
+### Nested Composite Types
+
+```sdkgen
+type User {
+  id: uuid
+  name: string
+  avatar: url?
+  friends: {
+    id: uuid
+    name: string
+  }[]
+}
+```
+
+This defines a `User` type where `friends` is an array of objects, each with `id` and `name` fields.
+
+### Complex Example
+
+```sdkgen
+type BlogPost {
+  id: uuid
+  title: string
+  content: string
+  author: {
+    id: uuid
+    name: string
+    email: email
+  }
+  metadata: {
+    publishedAt: datetime?
+    updatedAt: datetime
+    tags: string[]
+    viewCount: uint
+  }
+  comments: {
+    id: uuid
+    authorId: uuid
+    text: string
+    createdAt: datetime
+    replies: {
+      id: uuid
+      authorId: uuid
+      text: string
+      createdAt: datetime
+    }[]
+  }[]
+}
+```
+
+## Enum Types
+
+Enums represent a limited set of possible values:
+
+```sdkgen
+enum {
+  sent
+  received
+  failed
+}
+```
+
+### Syntax Variations
+
+Enums can be written on multiple lines or a single line:
+
+```sdkgen
+// Multi-line
+enum {
+  pending
+  approved
+  rejected
+}
+
+// Single line
+enum { small medium large }
+```
+
+### Using Enums
+
+Enums can appear anywhere a type is expected:
+
+```sdkgen
+type Order {
+  id: uuid
+  status: enum {
+    pending
+    processing
+    shipped
+    delivered
+    cancelled
+  }
+  priority: enum { low medium high }
+}
+```
+
+### Enums with Modifiers
+
+```sdkgen
+type Profile {
+  name: string
+  // Optional enum
+  theme: enum { light dark }?
+  
+  // Array of enums
+  skills: enum {
+    javascript
+    python
+    go
+    rust
+  }[]
+}
+```
+
+### Named Enum Types
+
+```sdkgen
+type UserRole enum {
+  guest
+  user
+  moderator
+  admin
+}
+
+type Status enum {
+  active
+  inactive
+  suspended
+}
+
+type User {
+  id: uuid
+  name: string
+  role: UserRole
+  accountStatus: Status
+}
+```
+
+## Type Composition
+
+See the [Type Composition](/concepts/type-composition) page for detailed information on using spreads and combining types.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choose the Right Numeric Type">
+    - Use `uint` for counts and non-negative values (age, quantity)
+    - Use `int` for values that can be negative (temperature, balance changes)
+    - Use `money` or `decimal` for financial calculations
+    - Use `bigint` only when you truly need unlimited precision
+    - Avoid `float` for financial data
+  </Accordion>
+
+  <Accordion title="Use Specific String Types">
+    Instead of generic `string`, use validated types when appropriate:
+    
+    ```sdkgen
+    // ✅ Good - validation enforced
+    type User {
+      email: email
+      website: url
+      id: uuid
+    }
+    
+    // ❌ Less safe - no validation
+    type User {
+      email: string
+      website: string
+      id: string
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Make Fields Optional Intentionally">
+    Only use `?` when a field can genuinely be absent:
+    
+    ```sdkgen
+    type User {
+      id: uuid          // Always present
+      name: string      // Always present
+      avatar: url?      // Optional - user may not have avatar
+      bio: string?      // Optional - user may not have bio
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use Named Types for Reusability">
+    Define named types for structures used in multiple places:
+    
+    ```sdkgen
+    type Address {
+      street: string
+      city: string
+      country: string
+    }
+    
+    type User {
+      id: uuid
+      name: string
+      homeAddress: Address
+      billingAddress: Address?
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Type Composition" icon="layer-group" href="/concepts/type-composition">
+    Learn about spreads and type composition
+  </Card>
+  <Card title="Functions" icon="function" href="/concepts/functions">
+    Use types in function definitions
+  </Card>
+</CardGroup>

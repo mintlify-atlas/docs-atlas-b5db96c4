@@ -1,0 +1,411 @@
+---
+title: "Functions"
+description: "Define API operations with typed function declarations"
+---
+
+Functions are the core of your sdkgen API. They represent the operations your API exposes, defining what clients can request and what they'll receive in return.
+
+## Function Syntax
+
+Every function has:
+- A clear, descriptive name
+- A list of typed arguments (can be empty)
+- An optional return type
+
+```sdkgen
+fn functionName(arg1: Type1, arg2: Type2): ReturnType
+```
+
+## Basic Examples
+
+### Function with Return Value
+
+```sdkgen
+fn addNumbers(first: int, second: int): int
+```
+
+This function:
+- Named `addNumbers`
+- Takes two `int` arguments: `first` and `second`
+- Returns an `int`
+
+### Function without Return Value
+
+```sdkgen
+fn deleteUser(userId: uuid)
+```
+
+When no return type is specified, the function returns nothing (void).
+
+### Function with No Arguments
+
+```sdkgen
+fn getCurrentTime(): datetime
+fn clearCache()
+```
+
+## Function Arguments
+
+### Required Arguments
+
+By default, all arguments are required:
+
+```sdkgen
+fn createUser(name: string, email: email, age: uint): User
+```
+
+All three arguments must be provided when calling this function.
+
+### Optional Arguments
+
+Use the `?` modifier to make arguments optional:
+
+```sdkgen
+fn updateUser(userId: uuid, name: string?, email: email?, age: uint?): User
+```
+
+The `userId` is required, but `name`, `email`, and `age` are optional.
+
+<Note>
+Optional arguments can be passed as `null` or omitted, depending on the client implementation.
+</Note>
+
+### Complex Type Arguments
+
+Arguments can be any valid type:
+
+```sdkgen
+fn createPost(
+  title: string,
+  content: string,
+  tags: string[],
+  publishedAt: datetime?,
+  metadata: json
+): Post
+```
+
+## Return Types
+
+### Primitive Return Types
+
+```sdkgen
+fn getUserId(email: email): uuid
+fn isUserActive(userId: uuid): bool
+fn getUserCount(): uint
+```
+
+### Complex Return Types
+
+```sdkgen
+fn getUser(id: uuid): User
+fn searchUsers(query: string): User[]
+fn getUserProfile(id: uuid): {
+  user: User
+  posts: Post[]
+  followers: User[]
+}
+```
+
+### Optional Return Types
+
+```sdkgen
+fn findUserByEmail(email: email): User?
+```
+
+This function might return a `User` or `null` if no user is found.
+
+<Warning>
+Consider using errors for exceptional cases instead of optional return types. See the [Error Handling](/concepts/errors) guide.
+</Warning>
+
+### Array Return Types
+
+```sdkgen
+fn getUsers(): User[]
+fn searchPosts(query: string, tags: string[]): Post[]
+fn getUserIds(): uuid[]
+```
+
+## Naming Conventions
+
+Function names should clearly indicate their purpose and typically start with a verb:
+
+<AccordionGroup>
+  <Accordion title="CRUD Operations">
+    ```sdkgen
+    // Create
+    fn createUser(name: string, email: email): User
+    fn addComment(postId: uuid, content: string): Comment
+    
+    // Read
+    fn getUser(id: uuid): User
+    fn findUserByEmail(email: email): User?
+    fn listUsers(limit: uint, offset: uint): User[]
+    fn searchPosts(query: string): Post[]
+    
+    // Update
+    fn updateUser(id: uuid, name: string?, email: email?): User
+    fn modifyPost(id: uuid, title: string, content: string): Post
+    
+    // Delete
+    fn deleteUser(id: uuid)
+    fn removeComment(commentId: uuid)
+    ```
+  </Accordion>
+
+  <Accordion title="Boolean Queries">
+    Use `is`, `has`, or `can` prefixes for boolean-returning functions:
+    
+    ```sdkgen
+    fn isUserActive(userId: uuid): bool
+    fn hasPermission(userId: uuid, permission: string): bool
+    fn canEditPost(userId: uuid, postId: uuid): bool
+    ```
+  </Accordion>
+
+  <Accordion title="Action Verbs">
+    ```sdkgen
+    fn sendEmail(to: email, subject: string, body: string)
+    fn publishPost(postId: uuid): Post
+    fn activateUser(userId: uuid)
+    fn processPayment(orderId: uuid, amount: money): Transaction
+    fn generateReport(startDate: date, endDate: date): Report
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Function Uniqueness
+
+<Warning>
+Each function name must be unique. sdkgen does not support function overloading.
+</Warning>
+
+```sdkgen
+// ❌ Invalid - duplicate function names
+fn getUser(id: uuid): User
+fn getUser(email: email): User  // Error!
+
+// ✅ Valid - unique names
+fn getUserById(id: uuid): User
+fn getUserByEmail(email: email): User
+```
+
+## Code Generation
+
+All functions in your API description are exposed in the generated client and server code:
+
+### Client-side
+
+Functions become asynchronous methods that return Promises (JavaScript), Futures (Dart), or equivalent:
+
+```typescript
+// Generated TypeScript client
+const user = await api.getUser(userId);
+const posts = await api.searchPosts("sdkgen");
+await api.deleteComment(commentId);
+```
+
+### Server-side
+
+You implement the function logic in your server code:
+
+```typescript
+// Server implementation (TypeScript)
+export async function getUser(ctx: Context, args: { id: string }): Promise<User> {
+  const user = await database.users.findById(args.id);
+  if (!user) {
+    throw new NotFoundError("User not found");
+  }
+  return user;
+}
+```
+
+## Complete Examples
+
+### User Management API
+
+```sdkgen
+type User {
+  id: uuid
+  name: string
+  email: email
+  createdAt: datetime
+  role: enum { user admin moderator }
+}
+
+fn createUser(name: string, email: email, role: UserRole): User
+fn getUser(id: uuid): User
+fn getUserByEmail(email: email): User?
+fn updateUser(id: uuid, name: string?, email: email?): User
+fn deleteUser(id: uuid)
+fn listUsers(limit: uint, offset: uint): User[]
+fn searchUsers(query: string): User[]
+```
+
+### E-commerce API
+
+```sdkgen
+type Product {
+  id: uuid
+  name: string
+  price: money
+  stock: uint
+}
+
+type Order {
+  id: uuid
+  userId: uuid
+  items: {
+    productId: uuid
+    quantity: uint
+    price: money
+  }[]
+  total: money
+  status: enum { pending paid shipped delivered cancelled }
+  createdAt: datetime
+}
+
+fn getProduct(id: uuid): Product
+fn listProducts(category: string?): Product[]
+fn searchProducts(query: string): Product[]
+
+fn createOrder(userId: uuid, items: OrderItem[]): Order
+fn getOrder(id: uuid): Order
+fn getUserOrders(userId: uuid): Order[]
+fn updateOrderStatus(orderId: uuid, status: OrderStatus): Order
+fn cancelOrder(orderId: uuid)
+
+fn processPayment(orderId: uuid, paymentMethod: string): bool
+```
+
+### Blog API
+
+```sdkgen
+type Post {
+  id: uuid
+  authorId: uuid
+  title: string
+  content: string
+  tags: string[]
+  publishedAt: datetime?
+  updatedAt: datetime
+}
+
+type Comment {
+  id: uuid
+  postId: uuid
+  authorId: uuid
+  content: string
+  createdAt: datetime
+}
+
+fn createPost(title: string, content: string, tags: string[]): Post
+fn getPost(id: uuid): Post
+fn updatePost(id: uuid, title: string?, content: string?, tags: string?[]): Post
+fn deletePost(id: uuid)
+fn publishPost(id: uuid): Post
+fn listPosts(authorId: uuid?, limit: uint, offset: uint): Post[]
+
+fn addComment(postId: uuid, content: string): Comment
+fn getComments(postId: uuid): Comment[]
+fn deleteComment(commentId: uuid)
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Clear, Action-Oriented Names">
+    Function names should clearly indicate what they do:
+    
+    ```sdkgen
+    // ✅ Good
+    fn createUser(name: string, email: email): User
+    fn getUserById(id: uuid): User
+    fn sendPasswordResetEmail(email: email)
+    
+    // ❌ Avoid
+    fn user(name: string, email: email): User
+    fn get(id: uuid): User
+    fn password(email: email)
+    ```
+  </Accordion>
+
+  <Accordion title="Group Related Functions">
+    Organize functions logically in your API file:
+    
+    ```sdkgen
+    // User management
+    fn createUser(...): User
+    fn getUser(...): User
+    fn updateUser(...): User
+    fn deleteUser(...)
+    
+    // Post management
+    fn createPost(...): Post
+    fn getPost(...): Post
+    fn updatePost(...): Post
+    fn deletePost(...)
+    ```
+  </Accordion>
+
+  <Accordion title="Be Consistent with Return Types">
+    Similar operations should return similar types:
+    
+    ```sdkgen
+    // ✅ Consistent - all getters return the object
+    fn getUser(id: uuid): User
+    fn getPost(id: uuid): Post
+    fn getComment(id: uuid): Comment
+    
+    // ✅ Consistent - all list functions return arrays
+    fn listUsers(): User[]
+    fn listPosts(): Post[]
+    fn listComments(): Comment[]
+    ```
+  </Accordion>
+
+  <Accordion title="Use Optional Arguments Wisely">
+    Make arguments optional only when they genuinely have sensible defaults:
+    
+    ```sdkgen
+    // ✅ Good - optional arguments have clear defaults
+    fn listUsers(limit: uint?, offset: uint?): User[]
+    fn searchPosts(query: string, tags: string?[]): Post[]
+    
+    // ❌ Questionable - required data shouldn't be optional
+    fn createUser(name: string?, email: email?): User
+    ```
+  </Accordion>
+
+  <Accordion title="Consider Pagination">
+    For functions that return lists, include pagination parameters:
+    
+    ```sdkgen
+    fn listUsers(limit: uint, offset: uint): User[]
+    fn searchPosts(query: string, page: uint, pageSize: uint): Post[]
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Authentication & Authorization
+
+<Info>
+All functions are exposed to clients. Implement authentication and authorization in your server implementation, not in the API description.
+</Info>
+
+The API description defines what operations exist, but your server code is responsible for:
+- Verifying user identity (authentication)
+- Checking permissions (authorization)
+- Validating business rules
+- Returning appropriate errors
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/concepts/errors">
+    Learn how to handle errors in functions
+  </Card>
+  <Card title="Type System" icon="shapes" href="/concepts/types">
+    Review available types for arguments and returns
+  </Card>
+</CardGroup>

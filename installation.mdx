@@ -1,0 +1,351 @@
+---
+title: "Installation"
+description: "Install the sdkgen CLI and runtime packages for your platform"
+---
+
+## Prerequisites
+
+Before installing sdkgen, ensure you have:
+
+- **Node.js 16 or newer** - Check the latest LTS version at [nodejs.org](https://nodejs.org/en/download/)
+- **npm, yarn, or pnpm** - Comes with Node.js (npm) or install separately
+
+<Info>
+  We recommend using the latest LTS (Long Term Support) version of Node.js for the best experience.
+</Info>
+
+## CLI Installation
+
+The sdkgen CLI is used to generate code from your API definitions.
+
+### Global Installation
+
+Install the CLI globally to use it across all your projects:
+
+<CodeGroup>
+```bash npm
+npm i -g @sdkgen/cli
+```
+
+```bash yarn
+yarn global add @sdkgen/cli
+```
+
+```bash pnpm
+pnpm add -g @sdkgen/cli
+```
+</CodeGroup>
+
+Verify the installation:
+
+```bash
+sdkgen --version
+```
+
+### Local Installation
+
+Install the CLI as a dev dependency in your project:
+
+<CodeGroup>
+```bash npm
+npm i --save-dev @sdkgen/cli
+```
+
+```bash yarn
+yarn add -D @sdkgen/cli
+```
+
+```bash pnpm
+pnpm add -D @sdkgen/cli
+```
+</CodeGroup>
+
+When installed locally, run it using `npx`:
+
+```bash
+npx sdkgen api.sdkgen -o api.ts -t typescript_nodeserver
+```
+
+<Tip>
+  Local installation is recommended for team projects to ensure everyone uses the same CLI version.
+</Tip>
+
+## Runtime Packages
+
+Depending on your platform, install the appropriate runtime package:
+
+### Node.js Server
+
+For building servers with Node.js and TypeScript:
+
+<CodeGroup>
+```bash npm
+npm i @sdkgen/node-runtime
+```
+
+```bash yarn
+yarn add @sdkgen/node-runtime
+```
+
+```bash pnpm
+pnpm add @sdkgen/node-runtime
+```
+</CodeGroup>
+
+**Features:**
+- HTTP server with automatic request handling
+- Built-in playground interface
+- REST endpoint support with Swagger UI
+- Middleware support for authentication and logging
+- Validation and error handling
+
+**Usage:**
+```typescript
+import { SdkgenHttpServer } from "@sdkgen/node-runtime";
+import { api } from "./api";
+
+const server = new SdkgenHttpServer(api, {});
+server.listen(8000);
+```
+
+### Web Client (Browser)
+
+For building web applications:
+
+<CodeGroup>
+```bash npm
+npm i @sdkgen/browser-runtime
+```
+
+```bash yarn
+yarn add @sdkgen/browser-runtime
+```
+
+```bash pnpm
+pnpm add @sdkgen/browser-runtime
+```
+</CodeGroup>
+
+**Features:**
+- Lightweight browser-compatible client
+- Automatic request serialization
+- Promise-based API
+- TypeScript support
+
+**Usage:**
+```typescript
+import { SdkgenHttpClient } from "@sdkgen/browser-runtime";
+import type { ApiClient } from "./api";
+
+const client = new SdkgenHttpClient<ApiClient>("http://localhost:8000");
+const post = await client.getPost({ id: "123" });
+```
+
+### Flutter (Dart)
+
+For Flutter mobile applications, add to your `pubspec.yaml`:
+
+```yaml pubspec.yaml
+dependencies:
+  sdkgen_runtime: ^0.0.0
+```
+
+Generate Dart client code:
+
+```bash
+sdkgen api.sdkgen -o lib/api.dart -t flutter
+```
+
+### Android (Kotlin)
+
+Generate Kotlin client code for native Android:
+
+```bash
+sdkgen api.sdkgen -o Api.kt -t kotlin_android
+```
+
+Add the generated file to your Android project's source directory.
+
+### iOS (Swift)
+
+Generate Swift client code for native iOS:
+
+```bash
+sdkgen api.sdkgen -o Api.swift -t swift_ios
+```
+
+Alternatively, for RxSwift support:
+
+```bash
+sdkgen api.sdkgen -o Api.swift -t rxswift_ios
+```
+
+Add the generated file to your Xcode project.
+
+### .NET Server (C#)
+
+Generate C# server code for .NET:
+
+```bash
+sdkgen api.sdkgen -o Api.cs -t csharp_server
+```
+
+Add the generated file to your .NET project and install required NuGet packages as specified in the generated code comments.
+
+### .NET Server (F#)
+
+Generate F# server code for .NET:
+
+```bash
+sdkgen api.sdkgen -o Api.fs -t fsharp_server
+```
+
+## Available Packages
+
+Here's a complete list of all sdkgen packages:
+
+| Package | Description | Use Case |
+|---------|-------------|----------|
+| `@sdkgen/cli` | Command-line interface | Code generation |
+| `@sdkgen/node-runtime` | Node.js runtime for servers | Building backend APIs |
+| `@sdkgen/browser-runtime` | Browser runtime for clients | Building web frontends |
+| `@sdkgen/playground` | Interactive API playground | Testing and debugging |
+| `@sdkgen/parser` | API definition parser | Custom tooling |
+| `@sdkgen/typescript-generator` | TypeScript code generator | Custom generation |
+| `@sdkgen/kotlin-generator` | Kotlin code generator | Custom generation |
+| `@sdkgen/swift-generator` | Swift code generator | Custom generation |
+| `@sdkgen/dart-generator` | Dart code generator | Custom generation |
+| `@sdkgen/csharp-generator` | C# code generator | Custom generation |
+| `@sdkgen/fsharp-generator` | F# code generator | Custom generation |
+
+<Warning>
+  The generator packages are typically only needed if you're building custom tooling. For normal usage, the CLI includes all generators.
+</Warning>
+
+## Code Generation Targets
+
+The CLI supports the following generation targets:
+
+| Target | Description | Platform |
+|--------|-------------|----------|
+| `typescript_nodeserver` | TypeScript server for Node.js | Backend |
+| `typescript_nodeclient` | TypeScript client for Node.js | Backend/Testing |
+| `typescript_web` | TypeScript client for browsers | Frontend |
+| `typescript_interfaces` | TypeScript type definitions only | Shared types |
+| `flutter` | Dart client for Flutter | Mobile (iOS/Android) |
+| `kotlin_android` | Kotlin client for Android | Mobile (Android) |
+| `swift_ios` | Swift client for iOS | Mobile (iOS) |
+| `rxswift_ios` | Swift client with RxSwift | Mobile (iOS) |
+| `csharp_server` | C# server for .NET | Backend |
+| `fsharp_server` | F# server for .NET | Backend |
+
+### Example Usage
+
+Generate different targets from the same API definition:
+
+```bash
+# Server
+sdkgen api.sdkgen -o server/api.ts -t typescript_nodeserver
+
+# Web client
+sdkgen api.sdkgen -o web/src/api.ts -t typescript_web
+
+# Mobile clients
+sdkgen api.sdkgen -o mobile/lib/api.dart -t flutter
+sdkgen api.sdkgen -o android/app/src/main/kotlin/Api.kt -t kotlin_android
+sdkgen api.sdkgen -o ios/App/Api.swift -t swift_ios
+```
+
+## TypeScript Configuration
+
+For TypeScript projects, ensure your `tsconfig.json` targets ES6 or newer:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
+```
+
+Generate this automatically:
+
+```bash
+npx tsc --init -t esnext
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart Guide"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Build your first API with sdkgen
+  </Card>
+  
+  <Card
+    title="CLI Reference"
+    icon="terminal"
+    href="/cli/overview"
+  >
+    Learn all CLI commands and options
+  </Card>
+  
+  <Card
+    title="API Definition"
+    icon="file-code"
+    href="/concepts/api-description"
+  >
+    Learn the sdkgen DSL syntax
+  </Card>
+  
+  <Card
+    title="Server Implementation"
+    icon="server"
+    href="/server/nodejs"
+  >
+    Build your server with sdkgen
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Command Not Found
+
+If you get a "command not found" error after global installation:
+
+1. Check your npm global bin directory:
+   ```bash
+   npm config get prefix
+   ```
+
+2. Ensure this directory is in your PATH environment variable
+
+3. Or use `npx` instead:
+   ```bash
+   npx @sdkgen/cli api.sdkgen -o api.ts -t typescript_nodeserver
+   ```
+
+### Version Conflicts
+
+If you experience issues with different sdkgen versions:
+
+1. Check installed versions:
+   ```bash
+   npm list -g @sdkgen/cli
+   npm list @sdkgen/node-runtime
+   ```
+
+2. Ensure CLI and runtime versions are compatible (same major version)
+
+3. Update all packages:
+   ```bash
+   npm update -g @sdkgen/cli
+   npm update @sdkgen/node-runtime
+   ```

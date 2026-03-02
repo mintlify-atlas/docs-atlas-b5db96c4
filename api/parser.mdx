@@ -1,0 +1,334 @@
+---
+title: Parser API
+description: API reference for the sdkgen Parser class and parsing utilities
+---
+
+## Parser Class
+
+The `Parser` class is responsible for parsing sdkgen schema files into an Abstract Syntax Tree (AST).
+
+### Constructor
+
+```typescript
+new Parser(source: Lexer | string | Array<Lexer | string>)
+```
+
+<ParamField path="source" type="Lexer | string | Array<Lexer | string>" required>
+  The source to parse. Can be:
+  - A `Lexer` instance
+  - A file path string (will be read from filesystem)
+  - An array of `Lexer` instances or file paths
+</ParamField>
+
+#### Example
+
+```typescript
+import { Parser } from "@sdkgen/parser";
+
+// Parse from string
+const parser1 = new Parser(new Lexer(schemaContent, "schema.sdkgen"));
+const ast1 = parser1.parse();
+
+// Parse from file path
+const parser2 = new Parser("./api.sdkgen");
+const ast2 = parser2.parse();
+
+// Parse multiple files
+const parser3 = new Parser(["./types.sdkgen", "./operations.sdkgen"]);
+const ast3 = parser3.parse();
+```
+
+### Methods
+
+#### parse()
+
+Parses the source and returns an Abstract Syntax Tree.
+
+```typescript
+parse(): AstRoot
+```
+
+<ResponseField name="return" type="AstRoot">
+  The parsed AST root containing type definitions, operations, and errors
+</ResponseField>
+
+#### Example
+
+```typescript
+import { Parser, Lexer } from "@sdkgen/parser";
+
+const source = `
+type User {
+  id: uuid
+  name: string
+  email: email
+}
+
+fn getUser(id: uuid): User
+`;
+
+const parser = new Parser(new Lexer(source, "api.sdkgen"));
+const ast = parser.parse();
+
+console.log(ast.typeDefinitions); // [TypeDefinition { name: "User", ... }]
+console.log(ast.operations); // [FunctionOperation { name: "getUser", ... }]
+console.log(ast.warnings); // string[]
+```
+
+## Lexer Class
+
+The `Lexer` class tokenizes sdkgen schema source code.
+
+### Constructor
+
+```typescript
+new Lexer(source: string, filename?: string)
+```
+
+<ParamField path="source" type="string" required>
+  The source code to tokenize
+</ParamField>
+
+<ParamField path="filename" type="string" default="-">
+  The filename for error reporting
+</ParamField>
+
+#### Example
+
+```typescript
+import { Lexer } from "@sdkgen/parser";
+
+const lexer = new Lexer("type User { name: string }", "schema.sdkgen");
+let token = lexer.nextToken();
+
+while (token) {
+  console.log(token);
+  token = lexer.nextToken();
+}
+```
+
+### Methods
+
+#### nextToken()
+
+Returns the next token from the source or `null` if at end of file.
+
+```typescript
+nextToken(): Token | null
+```
+
+<ResponseField name="return" type="Token | null">
+  The next token in the source, or `null` if reached end of file
+</ResponseField>
+
+### Static Properties
+
+#### PRIMITIVES
+
+```typescript
+static readonly PRIMITIVES: Set<string>
+```
+
+Set of all primitive type names supported by sdkgen:
+
+- `bool`, `int`, `uint`, `float`, `bigint`, `string`
+- `date`, `datetime`, `bytes`, `money`, `decimal`
+- `cpf`, `cnpj`, `email`, `html`, `url`, `uuid`
+- `hex`, `base64`, `xml`, `void`, `json`
+
+#### KEYWORDS
+
+```typescript
+static readonly KEYWORDS: Set<string>
+```
+
+Set of all reserved keywords including primitives and: `error`, `enum`, `type`, `import`, `get`, `function`, `fn`, `true`, `false`
+
+## Conversion Functions
+
+### astToJson()
+
+Converts an AST to a JSON representation.
+
+```typescript
+astToJson(ast: AstRoot): AstJson
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The AST to convert
+</ParamField>
+
+<ResponseField name="return" type="AstJson">
+  JSON representation of the AST with the following structure:
+  
+  ```typescript
+  {
+    typeTable: Record<string, TypeDescription>;
+    functionTable: Record<string, { args: Record<string, string>; ret: TypeDescription }>;
+    errors: Array<string | [string, string]>;
+    annotations: Record<string, AnnotationJson[]>;
+  }
+  ```
+</ResponseField>
+
+#### Example
+
+```typescript
+import { Parser, Lexer, astToJson } from "@sdkgen/parser";
+
+const source = `
+type User {
+  id: uuid
+  name: string
+}
+
+fn getUser(id: uuid): User
+`;
+
+const parser = new Parser(new Lexer(source));
+const ast = parser.parse();
+const json = astToJson(ast);
+
+console.log(JSON.stringify(json, null, 2));
+// {
+//   "typeTable": {
+//     "User": {
+//       "id": "uuid",
+//       "name": "string"
+//     }
+//   },
+//   "functionTable": {
+//     "getUser": {
+//       "args": { "id": "uuid" },
+//       "ret": "User"
+//     }
+//   },
+//   "errors": [],
+//   "annotations": {}
+// }
+```
+
+### jsonToAst()
+
+Converts a JSON representation back to an AST.
+
+```typescript
+jsonToAst(json: AstJson): AstRoot
+```
+
+<ParamField path="json" type="AstJson" required>
+  The JSON representation to convert
+</ParamField>
+
+<ResponseField name="return" type="AstRoot">
+  The reconstructed AST with semantic analysis applied
+</ResponseField>
+
+#### Example
+
+```typescript
+import { jsonToAst } from "@sdkgen/parser";
+
+const json = {
+  typeTable: {
+    User: {
+      id: "uuid",
+      name: "string",
+      email: "email?"
+    }
+  },
+  functionTable: {
+    createUser: {
+      args: { name: "string", email: "email?" },
+      ret: "User"
+    }
+  },
+  errors: [],
+  annotations: {}
+};
+
+const ast = jsonToAst(json);
+console.log(ast.operations[0].name); // "createUser"
+```
+
+## Types
+
+### TypeDescription
+
+```typescript
+type TypeDescription = 
+  | string 
+  | Array<string | [string, string]> 
+  | Record<string, string>
+```
+
+Describes a type in JSON format:
+- `string`: Primitive or reference type (e.g., `"string"`, `"User"`, `"uuid?"`, `"int[]"")`
+- `Array`: Enum type values (simple or tagged)
+- `Record`: Struct type with field name to type mappings
+
+### AstJson
+
+```typescript
+interface AstJson {
+  typeTable: Record<string, TypeDescription | undefined>;
+  functionTable: Record<string, {
+    args: Record<string, string>;
+    ret: TypeDescription;
+  } | undefined>;
+  errors: Array<string | [string, string]>;
+  annotations: Record<string, AnnotationJson[] | undefined>;
+}
+```
+
+Complete JSON representation of a parsed schema.
+
+## Errors
+
+### ParserError
+
+```typescript
+class ParserError extends Error
+```
+
+Thrown when the parser encounters invalid syntax.
+
+#### Example
+
+```typescript
+import { Parser, Lexer, ParserError } from "@sdkgen/parser";
+
+try {
+  const parser = new Parser(new Lexer("type User {"));
+  parser.parse();
+} catch (error) {
+  if (error instanceof ParserError) {
+    console.error("Parsing failed:", error.message);
+  }
+}
+```
+
+### LexerError
+
+```typescript
+class LexerError extends Error
+```
+
+Thrown when the lexer encounters an unexpected character or end of file.
+
+#### Example
+
+```typescript
+import { Lexer, LexerError } from "@sdkgen/parser";
+
+try {
+  const lexer = new Lexer("type User { name: @ }");
+  while (lexer.nextToken()) {
+    // tokenize
+  }
+} catch (error) {
+  if (error instanceof LexerError) {
+    console.error("Tokenization failed:", error.message);
+  }
+}
+```

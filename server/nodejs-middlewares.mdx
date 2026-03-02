@@ -1,0 +1,386 @@
+---
+title: Middleware System
+description: Learn how to use middlewares to intercept and modify API calls
+---
+
+Middlewares allow you to intercept all API calls, enabling cross-cutting concerns like logging, authentication, rate limiting, and more.
+
+## How Middlewares Work
+
+A middleware is a function that intercepts API calls before they reach your function handlers. Middlewares form a stack where:
+
+- The **last registered middleware** is the **first to execute**
+- Each middleware can manipulate the `ctx` object
+- Middlewares must return a response or call `next()` to continue
+- Middlewares can call `next()` zero, one, or multiple times
+
+At the bottom of the middleware stack is the actual function implementation from `api.fn`.
+
+## Basic Usage
+
+Register middlewares using the `use()` method:
+
+```typescript
+import { api } from "./api";
+
+api.use(async (ctx, next) => {
+  // Code before the function executes
+  console.log(`Calling ${ctx.request.name}`);
+  
+  // Call the next middleware or function handler
+  const reply = await next();
+  
+  // Code after the function executes
+  console.log(`Finished ${ctx.request.name}`);
+  
+  return reply;
+});
+```
+
+## Middleware Signature
+
+```typescript
+type Middleware<ExtraContextT> = (
+  ctx: Context & ExtraContextT,
+  next: () => Promise<ContextReply>
+) => Promise<ContextReply>
+```
+
+<ParamField path="ctx" type="Context & ExtraContextT" required>
+  The request context containing:
+  - `request.name`: Function name being called
+  - `request.args`: Function arguments
+  - `request.ip`: Client IP address
+  - `request.deviceInfo`: Device information
+  - `request.headers`: HTTP headers
+  - `response.headers`: Response headers map
+  - `response.statusCode`: Optional HTTP status code
+  - Any extra context properties
+</ParamField>
+
+<ParamField path="next" type="() => Promise<ContextReply>" required>
+  Function to call the next middleware or final handler. Returns a promise resolving to:
+  - `{ result: unknown }` on success
+  - `{ error: unknown }` on error
+</ParamField>
+
+## Common Use Cases
+
+### Request/Response Logging
+
+```typescript
+api.use(async (ctx, next) => {
+  const start = Date.now();
+  
+  console.log(`→ ${ctx.request.name}`, ctx.request.args);
+  
+  const reply = await next();
+  
+  const duration = Date.now() - start;
+  if (reply.error) {
+    console.log(`✗ ${ctx.request.name} failed in ${duration}ms`, reply.error);
+  } else {
+    console.log(`✓ ${ctx.request.name} succeeded in ${duration}ms`);
+  }
+  
+  return reply;
+});
+```
+
+### Authentication
+
+```typescript
+api.use(async (ctx, next) => {
+  const token = ctx.request.headers.authorization?.replace("Bearer ", "");
+  
+  if (!token) {
+    return {
+      error: new Unauthorized("Missing authentication token")
+    };
+  }
+  
+  try {
+    const user = await verifyToken(token);
+    // Add user to context for use in handlers
+    ctx.currentUser = user;
+    return await next();
+  } catch (error) {
+    return {
+      error: new Unauthorized("Invalid token")
+    };
+  }
+});
+```
+
+### Rate Limiting
+
+```typescript
+import { RateLimiter } from "./rate-limiter";
+
+const limiter = new RateLimiter();
+
+api.use(async (ctx, next) => {
+  const allowed = await limiter.checkLimit(ctx.request.ip);
+  
+  if (!allowed) {
+    return {
+      error: new RateLimitExceeded("Too many requests")
+    };
+  }
+  
+  return await next();
+});
+```
+
+### Caching
+
+```typescript
+import { cache } from "./cache";
+
+api.use(async (ctx, next) => {
+  // Only cache read operations
+  if (ctx.request.name.startsWith("get")) {
+    const cacheKey = `${ctx.request.name}:${JSON.stringify(ctx.request.args)}`;
+    const cached = await cache.get(cacheKey);
+    
+    if (cached) {
+      return { result: cached };
+    }
+    
+    const reply = await next();
+    
+    if (!reply.error) {
+      await cache.set(cacheKey, reply.result, 60); // 60 second TTL
+    }
+    
+    return reply;
+  }
+  
+  return await next();
+});
+```
+
+### Blocking Specific Functions
+
+```typescript
+api.use(async (ctx, next) => {
+  // Block access to admin functions
+  if (ctx.request.name.startsWith("admin") && !ctx.currentUser?.isAdmin) {
+    return {
+      error: new Forbidden("Admin access required")
+    };
+  }
+  
+  return await next();
+});
+```
+
+### Redirecting Calls
+
+```typescript
+api.use(async (ctx, next) => {
+  // Redirect old function names to new ones
+  if (ctx.request.name === "getUserById") {
+    ctx.request.name = "getUser";
+  }
+  
+  return await next();
+});
+```
+
+### Retry Logic
+
+```typescript
+api.use(async (ctx, next) => {
+  const maxRetries = 3;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const reply = await next();
+    
+    // Retry on specific errors
+    if (reply.error?.type === "ServiceUnavailable" && attempt < maxRetries) {
+      console.log(`Retry attempt ${attempt}/${maxRetries}`);
+      await sleep(1000 * attempt); // Exponential backoff
+      continue;
+    }
+    
+    return reply;
+  }
+  
+  // This should never be reached, but TypeScript requires it
+  return { error: new Fatal("Max retries exceeded") };
+});
+```
+
+### Error Transformation
+
+```typescript
+api.use(async (ctx, next) => {
+  const reply = await next();
+  
+  // Transform database errors to user-friendly errors
+  if (reply.error?.code === "UNIQUE_VIOLATION") {
+    return {
+      error: new ValidationError("This value already exists", {
+        field: reply.error.field,
+        message: "Must be unique"
+      })
+    };
+  }
+  
+  return reply;
+});
+```
+
+### Request Metrics
+
+```typescript
+import { metrics } from "./metrics";
+
+api.use(async (ctx, next) => {
+  const start = process.hrtime.bigint();
+  
+  const reply = await next();
+  
+  const duration = Number(process.hrtime.bigint() - start) / 1e6; // Convert to ms
+  
+  metrics.recordRequest({
+    function: ctx.request.name,
+    success: !reply.error,
+    duration,
+    errorType: reply.error?.type
+  });
+  
+  return reply;
+});
+```
+
+### Modifying Response
+
+```typescript
+api.use(async (ctx, next) => {
+  const reply = await next();
+  
+  // Add metadata to all successful responses
+  if (!reply.error && typeof reply.result === "object") {
+    return {
+      result: {
+        ...reply.result,
+        _metadata: {
+          timestamp: new Date().toISOString(),
+          requestId: ctx.request.id
+        }
+      }
+    };
+  }
+  
+  return reply;
+});
+```
+
+## Middleware Execution Order
+
+Middlewares execute in **reverse order** of registration:
+
+```typescript
+api.use(async (ctx, next) => {
+  console.log("Middleware 1: before");
+  const reply = await next();
+  console.log("Middleware 1: after");
+  return reply;
+});
+
+api.use(async (ctx, next) => {
+  console.log("Middleware 2: before");
+  const reply = await next();
+  console.log("Middleware 2: after");
+  return reply;
+});
+
+// Output when a function is called:
+// Middleware 2: before
+// Middleware 1: before
+// [Function executes]
+// Middleware 1: after
+// Middleware 2: after
+```
+
+## Skipping the Function Handler
+
+Middlewares don't have to call `next()`. You can return early:
+
+```typescript
+api.use(async (ctx, next) => {
+  // Return cached response without calling the handler
+  if (cachedValue) {
+    return { result: cachedValue };
+  }
+  
+  return await next();
+});
+```
+
+## Calling Next Multiple Times
+
+Some use cases require calling `next()` multiple times:
+
+```typescript
+api.use(async (ctx, next) => {
+  // Try primary service
+  let reply = await next();
+  
+  // If it fails, try backup service
+  if (reply.error?.type === "ServiceUnavailable") {
+    ctx.request.name = `backup_${ctx.request.name}`;
+    reply = await next();
+  }
+  
+  return reply;
+});
+```
+
+## TypeScript Support
+
+Middlewares are fully type-safe with extra context:
+
+```typescript
+import type { Context } from "@sdkgen/node-runtime";
+
+interface MyContext {
+  db: Database;
+  currentUser?: User;
+}
+
+const server = new SdkgenHttpServer<MyContext>(api, {
+  db: myDatabase
+});
+
+api.use(async (ctx: Context & MyContext, next) => {
+  // ctx.db is typed correctly
+  const user = await ctx.db.findUser(ctx.request.headers.userId);
+  ctx.currentUser = user;
+  
+  return await next();
+});
+```
+
+## Best Practices
+
+1. **Always handle errors**: Wrap middleware logic in try-catch if needed
+2. **Return the reply**: Always return the result of `next()` or a new reply object
+3. **Don't mutate args unnecessarily**: Be careful when modifying `ctx.request.args`
+4. **Order matters**: Register general middlewares first, specific ones last
+5. **Keep it simple**: Complex logic should be in function handlers, not middlewares
+6. **Document side effects**: If a middleware modifies context, document it clearly
+
+## Removing Middlewares
+
+While not common in production, you can remove middlewares for testing:
+
+```typescript
+// Clear all middlewares
+api.middlewares.length = 0;
+
+// Remove last middleware
+api.middlewares.pop();
+```

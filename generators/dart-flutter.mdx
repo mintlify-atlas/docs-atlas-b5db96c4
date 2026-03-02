@@ -1,0 +1,498 @@
+---
+title: 'Dart/Flutter Client Generator'
+description: 'Generate type-safe Dart client code for Flutter mobile and web apps'
+---
+
+The Dart/Flutter generator creates client code optimized for Flutter mobile and web applications.
+
+## Generate Dart client code
+
+```bash
+sdkgen api.sdkgen -o lib/api.dart -t flutter
+```
+
+**Target:** `flutter`
+
+## What gets generated
+
+The Dart generator creates:
+
+- **ApiClient class**: HTTP client with methods for each operation
+- **Data classes**: Dart classes for all struct types
+- **Enums**: Dart enums for enum types  
+- **Error classes**: Exception classes for custom errors
+- **Type tables**: Runtime type information for serialization
+- **Function table**: Operation metadata
+
+## Generated code structure
+
+### Imports
+
+```dart
+import 'dart:typed_data';
+import 'package:decimal/decimal.dart';
+import 'package:http/http.dart' as http;
+import 'package:sdkgen_runtime/types.dart';
+import 'package:sdkgen_runtime/http_client.dart';
+```
+
+### Enum definitions
+
+```dart
+enum Status {
+  active,
+  inactive,
+  pending
+}
+
+enum Role {
+  admin,
+  user,
+  guest
+}
+```
+
+### Data classes
+
+Struct types become Dart classes:
+
+```dart
+class User {
+  String id;
+  String name;
+  String email;
+  Status status;
+  Role role;
+  
+  User({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.status,
+    required this.role,
+  });
+}
+
+class Post {
+  String id;
+  String title;
+  String content;
+  String authorId;
+  DateTime? publishedAt;  // Optional field
+  
+  Post({
+    required this.id,
+    required this.title,
+    required this.content,
+    required this.authorId,
+    this.publishedAt,
+  });
+}
+```
+
+### Error classes
+
+Custom errors become exception classes:
+
+```dart
+class NotFoundException implements Exception {
+  final String message;
+  final String? request;
+  
+  NotFoundException(this.message, this.request);
+  
+  @override
+  String toString() => 'NotFoundException: $message';
+}
+
+class ValidationException implements Exception {
+  final String message;
+  final String? request;
+  final ValidationData data;
+  
+  ValidationException(this.message, this.request, this.data);
+  
+  @override
+  String toString() => 'ValidationException: $message';
+}
+```
+
+### API client class
+
+The main client class extends `SdkgenHttpClient`:
+
+```dart
+class ApiClient extends SdkgenHttpClient {
+  ApiClient(String baseUrl, [http.Client? client]) 
+      : super(baseUrl, client, _typeTable, _fnTable, _errTable);
+  
+  Future<User> getUser({required String id}) async {
+    final result = await makeRequest('getUser', {'id': id});
+    return result as User;
+  }
+  
+  Future<List<User>> listUsers({required int page, int? limit}) async {
+    final result = await makeRequest('listUsers', {
+      'page': page,
+      'limit': limit,
+    });
+    return (result as List).cast<User>();
+  }
+  
+  Future<void> deleteUser({required String id}) async {
+    await makeRequest('deleteUser', {'id': id});
+  }
+}
+```
+
+### Type tables
+
+The generator creates runtime type information for serialization:
+
+```dart
+var _typeTable = {
+  'User': StructTypeDescription(
+    User,
+    {
+      'id': 'string',
+      'name': 'string',
+      'email': 'string',
+      'status': 'Status',
+      'role': 'Role',
+    },
+    (Map fields) => User(
+      id: fields['id'] as String,
+      name: fields['name'] as String,
+      email: fields['email'] as String,
+      status: fields['status'] as Status,
+      role: fields['role'] as Role,
+    ),
+    (User obj) => ({
+      'id': obj.id,
+      'name': obj.name,
+      'email': obj.email,
+      'status': obj.status,
+      'role': obj.role,
+    }),
+  ),
+  'Status': EnumTypeDescription(Status, Status.values, [
+    'active',
+    'inactive',
+    'pending'
+  ]),
+};
+```
+
+## Using the client
+
+### Basic usage
+
+```dart
+import 'package:your_app/api.dart';
+
+void main() async {
+  final api = ApiClient('https://api.example.com');
+  
+  // Call API methods
+  final user = await api.getUser(id: '123');
+  print('User: ${user.name}');
+  
+  final users = await api.listUsers(page: 1, limit: 10);
+  print('Found ${users.length} users');
+}
+```
+
+### Error handling
+
+```dart
+try {
+  final user = await api.getUser(id: '999');
+  print(user.name);
+} on NotFoundException catch (e) {
+  print('User not found: ${e.message}');
+} on ValidationException catch (e) {
+  print('Validation error: ${e.message}');
+  print('Errors: ${e.data}');
+} catch (e) {
+  print('Unexpected error: $e');
+}
+```
+
+### Custom HTTP client
+
+Provide a custom `http.Client` for advanced configuration:
+
+```dart
+import 'package:http/http.dart' as http;
+
+final client = http.Client();
+final api = ApiClient('https://api.example.com', client);
+```
+
+## Integration with Flutter
+
+### Provider pattern
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:your_app/api.dart';
+
+void main() {
+  runApp(
+    Provider(
+      create: (_) => ApiClient('https://api.example.com'),
+      child: MyApp(),
+    ),
+  );
+}
+
+class UserScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final api = Provider.of<ApiClient>(context);
+    
+    return FutureBuilder<User>(
+      future: api.getUser(id: '123'),
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          return Text('User: ${snapshot.data!.name}');
+        } else if (snapshot.hasError) {
+          return Text('Error: ${snapshot.error}');
+        }
+        return CircularProgressIndicator();
+      },
+    );
+  }
+}
+```
+
+### GetX pattern
+
+```dart
+import 'package:get/get.dart';
+import 'package:your_app/api.dart';
+
+class ApiService extends GetxService {
+  late final ApiClient client;
+  
+  Future<ApiService> init() async {
+    client = ApiClient('https://api.example.com');
+    return this;
+  }
+}
+
+// Initialize in main.dart
+void main() async {
+  await Get.putAsync(() => ApiService().init());
+  runApp(MyApp());
+}
+
+// Use in controllers
+class UserController extends GetxController {
+  final _api = Get.find<ApiService>().client;
+  final user = Rxn<User>();
+  
+  Future<void> loadUser(String id) async {
+    try {
+      user.value = await _api.getUser(id: id);
+    } catch (e) {
+      Get.snackbar('Error', e.toString());
+    }
+  }
+}
+```
+
+### Bloc pattern
+
+```dart
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:your_app/api.dart';
+
+class UserBloc extends Bloc<UserEvent, UserState> {
+  final ApiClient api;
+  
+  UserBloc(this.api) : super(UserInitial()) {
+    on<LoadUser>((event, emit) async {
+      emit(UserLoading());
+      try {
+        final user = await api.getUser(id: event.id);
+        emit(UserLoaded(user));
+      } on NotFoundException catch (e) {
+        emit(UserError(e.message));
+      }
+    });
+  }
+}
+```
+
+## Dependencies
+
+Add these dependencies to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.1.0
+  sdkgen_runtime: ^1.0.0
+  
+  # Optional: only if using decimal types
+  decimal: ^2.3.3
+```
+
+Then run:
+
+```bash
+flutter pub get
+```
+
+## Type mapping
+
+sdkgen types are mapped to Dart types:
+
+| sdkgen Type | Dart Type |
+|-------------|----------|
+| `string` | `String` |
+| `int` | `int` |
+| `uint` | `int` |
+| `float` | `double` |
+| `bool` | `bool` |
+| `date` | `DateTime` |
+| `datetime` | `DateTime` |
+| `bytes` | `Uint8List` |
+| `bigint` | `BigInt` |
+| `decimal` | `Decimal` |
+| `json` | `dynamic` |
+| `void` | `void` |
+| `T?` | `T?` (nullable) |
+| `T[]` | `List<T>` |
+
+## Features
+
+### Named parameters
+
+All API methods use named parameters with `required` keyword:
+
+```dart
+// Required parameters
+await api.createUser(
+  name: 'John',
+  email: 'john@example.com',
+);
+
+// Optional parameters
+await api.updateUser(
+  id: '123',
+  name: 'Jane',  // Optional
+  email: null,   // Optional
+);
+```
+
+### Type safety
+
+Full compile-time type checking:
+
+```dart
+// This won't compile - wrong type
+await api.getUser(id: 123);  // Error: int instead of String
+
+// This is correct
+await api.getUser(id: '123');
+```
+
+### Null safety
+
+Supports Dart's null safety features:
+
+```dart
+class User {
+  String name;      // Non-nullable
+  String? email;    // Nullable
+  
+  User({required this.name, this.email});
+}
+```
+
+### Future-based async
+
+All operations return `Future` for async/await:
+
+```dart
+Future<void> loadData() async {
+  final users = await api.listUsers(page: 1);
+  final posts = await api.listPosts(authorId: users.first.id);
+}
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use a service locator or DI">
+    Don't create API client instances everywhere. Use dependency injection:
+    ```dart
+    // With GetIt
+    final getIt = GetIt.instance;
+    getIt.registerSingleton<ApiClient>(
+      ApiClient('https://api.example.com')
+    );
+    
+    // Use it
+    final api = getIt<ApiClient>();
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle errors consistently">
+    Create a wrapper for consistent error handling:
+    ```dart
+    Future<T?> safeApiCall<T>(Future<T> Function() call) async {
+      try {
+        return await call();
+      } on NotFoundException catch (e) {
+        showError('Not found: ${e.message}');
+      } on ValidationException catch (e) {
+        showError('Validation: ${e.message}');
+      } catch (e) {
+        showError('Error: $e');
+      }
+      return null;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Dispose HTTP client">
+    Close the HTTP client when done:
+    ```dart
+    final client = http.Client();
+    final api = ApiClient('https://api.example.com', client);
+    
+    // When done
+    client.close();
+    ```
+  </Accordion>
+  
+  <Accordion title="Use environment variables for URLs">
+    Don't hardcode API URLs:
+    ```dart
+    const apiUrl = String.fromEnvironment(
+      'API_URL',
+      defaultValue: 'https://api.example.com',
+    );
+    final api = ApiClient(apiUrl);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="Kotlin Android" icon="android" href="/generators/kotlin-android">
+  Generate native Android client code
+</Card>
+
+<Card title="Swift iOS" icon="apple" href="/generators/swift-ios">
+  Generate native iOS client code
+</Card>
+
+</CardGroup>

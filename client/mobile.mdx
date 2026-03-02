@@ -1,0 +1,592 @@
+---
+title: 'Mobile Clients'
+description: 'Use sdkgen in mobile applications with Dart, Kotlin, and Swift clients'
+---
+
+## Overview
+
+Sdkgen provides native mobile clients for:
+
+- **Dart/Flutter**: Cross-platform mobile apps (iOS and Android)
+- **Kotlin**: Native Android applications
+- **Swift**: Native iOS applications
+
+Each client provides type-safe API access with platform-specific optimizations.
+
+## Dart/Flutter Client
+
+The Dart runtime provides a cross-platform HTTP client for Flutter applications.
+
+### Installation
+
+Add the dependency to your `pubspec.yaml`:
+
+```yaml
+dependencies:
+  http: ^1.1.0
+  shared_preferences: ^2.2.0
+  convert: ^3.1.0
+```
+
+### Basic Usage
+
+```dart
+import 'package:your_app/generated/api_client.dart';
+
+final api = ApiClient('https://api.example.com');
+
+// Make API calls
+final user = await api.getUser({'id': '123'});
+print('${user.name} - ${user.email}');
+
+// Create resources
+final post = await api.createPost({
+  'title': 'Hello from Flutter',
+  'content': 'My first mobile post',
+  'authorId': user.id,
+});
+```
+
+### SdkgenHttpClient (Dart)
+
+The Dart client is defined in `dart-runtime/lib/http_client.dart:32`.
+
+#### Constructor
+
+```dart
+class SdkgenHttpClient {
+  SdkgenHttpClient(
+    String baseUrl,
+    http.Client? client,
+    Map<String, Object> typeTable,
+    Map<String, FunctionDescription> fnTable,
+    Map<String, SdkgenErrorDescription> errTable,
+  );
+}
+```
+
+**Parameters:**
+- `baseUrl`: API endpoint URL
+- `client`: Optional custom HTTP client (defaults to `http.Client()`)
+- `typeTable`: Type definitions from generated code
+- `fnTable`: Function descriptions from generated code
+- `errTable`: Error type mappings
+
+#### Properties
+
+##### extra
+
+Dictionary for additional request metadata:
+
+```dart
+api.extra['authToken'] = 'bearer-token-123';
+api.extra['userId'] = currentUser.id;
+api.extra['appVersion'] = '1.2.3';
+```
+
+##### headers
+
+Customize HTTP headers:
+
+```dart
+api.headers['Authorization'] = 'Bearer ${token}';
+api.headers['X-Custom-Header'] = 'value';
+```
+
+Default headers from `dart-runtime/lib/http_client.dart:37`:
+```dart
+final Map<String, String> headers = {
+  'Content-Type': 'application/sdkgen',
+};
+```
+
+##### interceptors
+
+Add request/response interceptors:
+
+```dart
+api.addInterceptor(
+  SdkgenInterceptors(
+    onRequest: (body) async {
+      print('Request: ${body['name']}');
+    },
+    onResponse: (response) async {
+      print('Response received');
+    },
+    onError: (error) async {
+      print('Error: ${error.message}');
+    },
+  ),
+);
+```
+
+#### Methods
+
+##### makeRequest
+
+```dart
+Future<Object?> makeRequest(
+  String functionName,
+  Map<String, Object?> args,
+) async
+```
+
+Makes an API call with automatic encoding/decoding.
+
+**Example:**
+```dart
+final result = await api.makeRequest('getUser', {'id': '123'});
+```
+
+### Device Information (Dart)
+
+The Dart client automatically collects platform-specific device info from `dart-runtime/lib/http_client.dart:131`:
+
+```dart
+deviceInfo: await getDeviceInfo(await _deviceId())
+```
+
+Device information includes:
+- **id**: Persistent device identifier (stored in SharedPreferences)
+- **type**: Platform type (`'android'`, `'ios'`, `'web'`)
+- **platform**: Detailed platform information
+
+### Error Handling (Dart)
+
+Dart errors are defined in `dart-runtime/lib/http_client.dart:15`:
+
+```dart
+class SdkgenError implements Exception {
+  final String message;
+  final Json request;
+  const SdkgenError(this.message, [this.request = const {}]);
+
+  @override
+  String toString() => '$runtimeType: $message';
+}
+
+class SdkgenErrorWithData<T> extends SdkgenError {
+  final T data;
+  const SdkgenErrorWithData(super.message, super.request, this.data);
+}
+```
+
+#### Handling Errors
+
+```dart
+try {
+  final user = await api.getUser({'id': 'invalid'});
+} on ValidationError catch (e) {
+  print('Validation failed: ${e.message}');
+  print('Field errors: ${e.data}');
+} on NotFoundError catch (e) {
+  print('User not found');
+} on SdkgenError catch (e) {
+  print('API error: ${e.message}');
+  print('Request: ${e.request}');
+} catch (e) {
+  print('Unexpected error: $e');
+}
+```
+
+### Interceptors (Dart)
+
+From `dart-runtime/lib/interceptors.dart`, you can intercept requests and responses:
+
+```dart
+import 'package:your_app/generated/interceptors.dart';
+
+class LoggingInterceptor extends SdkgenInterceptors {
+  @override
+  Future<void> onRequest(Map<String, dynamic> body) async {
+    print('[${DateTime.now()}] ${body['name']}');
+    print('Args: ${body['args']}');
+  }
+
+  @override
+  Future<void> onResponse(dynamic response) async {
+    print('Response received: ${response.runtimeType}');
+  }
+
+  @override
+  Future<void> onError(SdkgenError error) async {
+    print('Error occurred: ${error.message}');
+    // Send to crash reporting
+    await crashReporting.report(error);
+  }
+}
+
+// Add to client
+api.addInterceptor(LoggingInterceptor());
+```
+
+### Flutter Example
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:your_app/generated/api_client.dart';
+
+class UserProfile extends StatefulWidget {
+  final String userId;
+  
+  const UserProfile({required this.userId});
+  
+  @override
+  State<UserProfile> createState() => _UserProfileState();
+}
+
+class _UserProfileState extends State<UserProfile> {
+  final api = ApiClient('https://api.example.com');
+  User? user;
+  bool loading = true;
+  String? error;
+  
+  @override
+  void initState() {
+    super.initState();
+    loadUser();
+  }
+  
+  Future<void> loadUser() async {
+    try {
+      final result = await api.getUser({'id': widget.userId});
+      setState(() {
+        user = result;
+        loading = false;
+      });
+    } on SdkgenError catch (e) {
+      setState(() {
+        error = e.message;
+        loading = false;
+      });
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const CircularProgressIndicator();
+    }
+    
+    if (error != null) {
+      return Text('Error: $error');
+    }
+    
+    return Column(
+      children: [
+        Text(user!.name, style: Theme.of(context).textTheme.headlineMedium),
+        Text(user!.email),
+      ],
+    );
+  }
+}
+```
+
+## Kotlin Client (Android)
+
+The Kotlin runtime is generated specifically for Android applications.
+
+<Note>
+  Kotlin runtime implementation details are generated by the Kotlin generator. See [Kotlin/Android Generator](/generators/kotlin-android) for more information.
+</Note>
+
+### Usage Pattern
+
+```kotlin
+import com.example.api.ApiClient
+import kotlinx.coroutines.runBlocking
+
+val api = ApiClient("https://api.example.com")
+
+// Set authentication
+api.extra["authToken"] = "bearer-token-123"
+
+// Make API calls
+runBlocking {
+    val user = api.getUser(id = "123")
+    println("${user.name} - ${user.email}")
+    
+    // Handle errors
+    try {
+        val result = api.dangerousOperation(id = "456")
+    } catch (e: ValidationError) {
+        println("Validation error: ${e.message}")
+        println("Data: ${e.data}")
+    } catch (e: SdkgenError) {
+        println("API error: ${e.message}")
+    }
+}
+```
+
+### Android Example
+
+```kotlin
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+class UserViewModel : ViewModel() {
+    private val api = ApiClient("https://api.example.com")
+    
+    private val _user = MutableStateFlow<User?>(null)
+    val user: StateFlow<User?> = _user
+    
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+    
+    fun loadUser(userId: String) {
+        viewModelScope.launch {
+            try {
+                _user.value = api.getUser(id = userId)
+            } catch (e: SdkgenError) {
+                _error.value = e.message
+            }
+        }
+    }
+}
+```
+
+## Swift Client (iOS)
+
+The Swift runtime is generated for native iOS applications.
+
+<Note>
+  Swift runtime implementation details are generated by the Swift generator. See [Swift/iOS Generator](/generators/swift-ios) for more information.
+</Note>
+
+### Usage Pattern
+
+```swift
+import Foundation
+
+let api = ApiClient(baseURL: "https://api.example.com")
+
+// Set authentication
+api.extra["authToken"] = "bearer-token-123"
+
+// Make API calls
+Task {
+    do {
+        let user = try await api.getUser(id: "123")
+        print("\(user.name) - \(user.email)")
+    } catch let error as ValidationError {
+        print("Validation error: \(error.message)")
+        print("Data: \(error.data)")
+    } catch let error as SdkgenError {
+        print("API error: \(error.message)")
+    }
+}
+```
+
+### SwiftUI Example
+
+```swift
+import SwiftUI
+
+class UserStore: ObservableObject {
+    private let api = ApiClient(baseURL: "https://api.example.com")
+    
+    @Published var user: User?
+    @Published var error: String?
+    @Published var loading = false
+    
+    func loadUser(id: String) async {
+        loading = true
+        defer { loading = false }
+        
+        do {
+            user = try await api.getUser(id: id)
+        } catch let error as SdkgenError {
+            self.error = error.message
+        } catch {
+            self.error = "Unexpected error"
+        }
+    }
+}
+
+struct UserProfileView: View {
+    @StateObject var store = UserStore()
+    let userId: String
+    
+    var body: some View {
+        Group {
+            if store.loading {
+                ProgressView()
+            } else if let error = store.error {
+                Text("Error: \(error)")
+            } else if let user = store.user {
+                VStack {
+                    Text(user.name)
+                        .font(.title)
+                    Text(user.email)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .task {
+            await store.loadUser(id: userId)
+        }
+    }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Create a singleton API client">
+    **Dart:**
+    ```dart
+    // lib/services/api.dart
+    final api = ApiClient(
+      const String.fromEnvironment('API_URL', 
+        defaultValue: 'https://api.example.com'
+      ),
+    );
+    ```
+    
+    **Kotlin:**
+    ```kotlin
+    object ApiService {
+        val client = ApiClient(BuildConfig.API_URL)
+    }
+    ```
+    
+    **Swift:**
+    ```swift
+    class ApiService {
+        static let shared = ApiClient(
+            baseURL: Bundle.main.infoDictionary?["API_URL"] as? String 
+                ?? "https://api.example.com"
+        )
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle authentication properly">
+    ```dart
+    class AuthService {
+      final ApiClient api;
+      
+      Future<void> login(String email, String password) async {
+        final response = await api.authenticate({
+          'email': email,
+          'password': password,
+        });
+        
+        // Store token
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('authToken', response.token);
+        
+        // Set for future requests
+        api.extra['authorization'] = 'Bearer ${response.token}';
+      }
+      
+      Future<void> logout() async {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('authToken');
+        api.extra.remove('authorization');
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use interceptors for logging">
+    ```dart
+    class AnalyticsInterceptor extends SdkgenInterceptors {
+      @override
+      Future<void> onRequest(Map<String, dynamic> body) async {
+        analytics.logEvent(
+          name: 'api_call',
+          parameters: {'function': body['name']},
+        );
+      }
+      
+      @override
+      Future<void> onError(SdkgenError error) async {
+        analytics.logEvent(
+          name: 'api_error',
+          parameters: {
+            'error_type': error.runtimeType.toString(),
+            'message': error.message,
+          },
+        );
+      }
+    }
+    
+    api.addInterceptor(AnalyticsInterceptor());
+    ```
+  </Accordion>
+  
+  <Accordion title="Implement offline support">
+    ```dart
+    class OfflineFirstRepository {
+      final ApiClient api;
+      final Database db;
+      
+      Future<User> getUser(String id) async {
+        // Try cache first
+        final cached = await db.getUser(id);
+        
+        try {
+          // Fetch fresh data
+          final user = await api.getUser({'id': id});
+          
+          // Update cache
+          await db.saveUser(user);
+          
+          return user;
+        } on SdkgenError {
+          // Return cached data on error
+          if (cached != null) return cached;
+          rethrow;
+        }
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Platform-Specific Features
+
+### Dart/Flutter
+
+- **SharedPreferences** for device ID persistence
+- **Platform channels** for native device info
+- **http** package for networking
+- Full support for async/await
+
+### Kotlin/Android
+
+- **Coroutines** for asynchronous operations
+- **Retrofit** integration (when configured)
+- **OkHttp** client support
+- Android-specific device information
+
+### Swift/iOS
+
+- **async/await** with Swift concurrency
+- **URLSession** for networking
+- **Codable** protocol for serialization
+- iOS-specific device information
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dart Generator" icon="code" href="/generators/dart-flutter">
+    Learn how to generate Dart/Flutter clients
+  </Card>
+  
+  <Card title="Kotlin Generator" icon="android" href="/generators/kotlin-android">
+    Generate native Android clients with Kotlin
+  </Card>
+  
+  <Card title="Swift Generator" icon="apple" href="/generators/swift-ios">
+    Generate native iOS clients with Swift
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation" href="/concepts/errors">
+    Understand error types and handling patterns
+  </Card>
+</CardGroup>

@@ -1,0 +1,337 @@
+---
+title: Interactive Playground
+description: Explore and test your sdkgen API with the interactive playground
+---
+
+The sdkgen Playground is an interactive web interface for exploring, testing, and developing against your sdkgen API. It provides both simple point-and-click testing and an advanced code editor for complex scenarios.
+
+## Features
+
+The playground includes:
+
+- **API Explorer**: Browse all available functions and their documentation
+- **Simple Calls**: Test functions with a form-based interface
+- **Advanced Editor**: Write and execute code with full API access
+- **Type Details**: Inspect type definitions and schemas
+- **Console**: View logs and network requests
+- **Code Generation**: Download client code for multiple platforms
+
+## Accessing the Playground
+
+When you run your sdkgen server with introspection enabled, the playground is available at:
+
+```
+http://localhost:8000/
+```
+
+(Adjust the host and port according to your server configuration)
+
+### Enabling the Playground
+
+```typescript
+import { SdkgenHttpServer } from "@sdkgen/node-runtime";
+
+const server = new SdkgenHttpServer(api, {
+  introspection: true  // Enable playground
+});
+```
+
+<Warning>
+Disable introspection in production to prevent exposing your API structure.
+</Warning>
+
+## Components
+
+### Home Tab
+
+The default view shows:
+
+- **Function List**: All available API functions with search/filter
+- **Documentation**: `@description` annotations for each function
+- **Type Information**: Click on types to see their structure
+
+Click on any function to open it in a simple call tab.
+
+### Simple Call Interface
+
+The simple call component provides:
+
+1. **Arguments Editor**: JSON editor for function arguments
+2. **Extra Parameters**: Add custom headers or context data
+3. **Run Button**: Execute the function
+4. **Response Viewer**: See the result or error
+
+#### Example Usage
+
+For a function:
+
+```sdkgen
+type Product {
+  id: uuid
+  name: string
+  price: money
+}
+
+fn getProduct(id: uuid): Product?
+```
+
+The simple call interface shows:
+
+```json
+{
+  "id": "00000000-0000-0000-0000-000000000000"
+}
+```
+
+Edit the UUID and click **Run** to test the function.
+
+### Advanced Editor
+
+The advanced editor allows writing TypeScript code that calls multiple API functions:
+
+```typescript
+// Example: Test user registration flow
+const user = await api.createUser({
+  name: "Test User",
+  email: "test@example.com"
+});
+
+console.log("Created user:", user);
+
+const profile = await api.getUserProfile(user.id);
+console.log("Profile:", profile);
+
+const posts = await api.getUserPosts(user.id);
+console.log("Posts:", posts.length);
+```
+
+#### Features
+
+- Full TypeScript/JavaScript support
+- `api` object with all your functions
+- `console.log()` output shown in console panel
+- Async/await support
+- Auto-completion (via Monaco editor)
+
+### Console Panel
+
+The console shows:
+
+- `console.log()` output from your code
+- Network requests and responses
+- Errors and stack traces
+- Execution timing
+
+### Type Details Dialog
+
+Click on any type name to see:
+
+- All fields and their types
+- Field descriptions from `@description`
+- Nested type structures
+- Enum values
+
+## Code Generation
+
+The playground can generate client code for multiple platforms:
+
+### Available Targets
+
+- **TypeScript Node.js Server**: Server-side implementation
+- **TypeScript Node.js Client**: Node.js client
+- **TypeScript Web Client**: Browser client
+- **TypeScript Interfaces**: Type definitions only
+- **Dart/Flutter**: Flutter mobile client
+- **C# Server**: .NET server implementation
+- **F# Server**: F# server implementation
+- **Kotlin Android**: Android client
+- **Swift iOS**: iOS client
+- **RxSwift iOS**: iOS client with reactive extensions
+
+### Downloading Generated Code
+
+Click the platform icon in the top bar to download the generated source code file. The file includes:
+
+- All type definitions
+- API client or server implementation
+- Type-safe function signatures
+- Serialization/deserialization code
+
+## Testing Workflows
+
+### Simple Testing
+
+1. Navigate to the home tab
+2. Find the function you want to test
+3. Click on it to open a simple call tab
+4. Edit the JSON arguments
+5. Click **Run**
+6. View the response
+
+### Complex Scenarios
+
+For multi-step workflows:
+
+1. Click **+** to add an advanced editor tab
+2. Write code calling multiple functions
+3. Use variables to pass data between calls
+4. Click **Run** to execute the entire script
+5. Check console output for results
+
+### Example: Testing Authentication
+
+```typescript
+// Register a new user
+const user = await api.register({
+  email: "test@example.com",
+  password: "secure123"
+});
+
+console.log("Registered:", user.id);
+
+// Login
+const session = await api.login({
+  email: "test@example.com",
+  password: "secure123"
+});
+
+console.log("Session token:", session.token);
+
+// Use token in subsequent calls
+api.extra.set("Authorization", `Bearer ${session.token}`);
+
+const profile = await api.getMyProfile();
+console.log("Logged in as:", profile.name);
+```
+
+## Extra Parameters
+
+The "Extra" tab in simple calls allows you to add:
+
+- Custom headers
+- Context data
+- Authentication tokens
+
+Example:
+
+```json
+{
+  "Authorization": "Bearer eyJhbGc...",
+  "X-Custom-Header": "value"
+}
+```
+
+In the advanced editor:
+
+```typescript
+api.extra.set("Authorization", "Bearer token123");
+api.extra.set("X-User-Id", "12345");
+
+const result = await api.someFunction();
+```
+
+## Development Workflow
+
+### 1. Design Your API
+
+Write your `.sdkgen` file:
+
+```sdkgen
+type User {
+  id: uuid
+  name: string
+  email: email
+}
+
+fn createUser(name: string, email: email): User
+fn getUser(id: uuid): User?
+```
+
+### 2. Implement Functions
+
+Implement the server:
+
+```typescript
+import { api } from "./api";
+
+api.fn.createUser = async (ctx, { name, email }) => {
+  // Implementation
+  return { id: randomUUID(), name, email };
+};
+
+api.fn.getUser = async (ctx, { id }) => {
+  // Implementation
+  return await db.users.findById(id);
+};
+```
+
+### 3. Test in Playground
+
+1. Start your server
+2. Open the playground
+3. Test each function
+4. Verify responses
+5. Check error handling
+
+### 4. Generate Client Code
+
+Download client code for your platform and integrate into your application.
+
+## Best Practices
+
+### Documentation
+
+Add descriptions to improve playground UX:
+
+```sdkgen
+@description Creates a new user account
+@arg name The user's full name
+@arg email Valid email address
+fn createUser(name: string, email: email): User
+```
+
+### Organizing Functions
+
+Use consistent naming for better filtering:
+
+```sdkgen
+// Good: Grouped by resource
+fn getUser(id: uuid): User
+fn createUser(data: NewUser): User
+fn updateUser(id: uuid, data: UserUpdate): User
+fn deleteUser(id: uuid): void
+
+fn getPost(id: uuid): Post
+fn createPost(data: NewPost): Post
+```
+
+### Error Testing
+
+Test error scenarios in the advanced editor:
+
+```typescript
+try {
+  await api.getUser("invalid-uuid");
+} catch (error) {
+  console.log("Error type:", error.type);
+  console.log("Error message:", error.message);
+  console.log("Error data:", error.data);
+}
+```
+
+## Security Considerations
+
+<Warning>
+Always disable introspection in production environments.
+</Warning>
+
+```typescript
+const server = new SdkgenHttpServer(api, {
+  introspection: process.env.NODE_ENV !== "production"
+});
+```
+
+This prevents:
+- API structure exposure
+- Unauthorized testing
+- Information leakage

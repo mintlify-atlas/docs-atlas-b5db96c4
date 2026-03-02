@@ -1,0 +1,472 @@
+---
+title: "Android Runtime API"
+description: "Kotlin/Android runtime API reference for sdkgen on Android platforms"
+---
+
+## Overview
+
+The Android Runtime provides the HTTP client for making API calls from Android applications using Kotlin. It uses OkHttp for networking, Gson for JSON serialization, and automatically collects device information.
+
+## Installation
+
+Add to your `build.gradle`:
+
+```gradle
+dependencies {
+    implementation 'io.sdkgen:runtime:latest'
+}
+```
+
+## SdkgenHttpClient
+
+The main class for making HTTP requests from Android applications.
+
+### Constructor
+
+```kotlin
+open class SdkgenHttpClient(
+    private val baseUrl: String,
+    private val applicationContext: Context,
+    private val defaultTimeoutMillis: Long = 10000L,
+    var fingerprint: String? = null,
+    private val httpInterceptor: Interceptor? = null,
+    private val httpNetworkInterceptor: Interceptor? = null,
+    private val deviceIdDelegate: (() -> String)? = null
+)
+```
+
+<ParamField path="baseUrl" type="String" required>
+  The base URL of your sdkgen API server (e.g., `https://api.example.com`)
+</ParamField>
+
+<ParamField path="applicationContext" type="Context" required>
+  The Android application context, used for accessing SharedPreferences and device information
+</ParamField>
+
+<ParamField path="defaultTimeoutMillis" type="Long" default="10000">
+  Default timeout in milliseconds for API requests
+</ParamField>
+
+<ParamField path="fingerprint" type="String?">
+  Optional device fingerprint. If null, uses Android ID from Settings.Secure
+</ParamField>
+
+<ParamField path="httpInterceptor" type="Interceptor?">
+  Optional OkHttp interceptor for modifying requests/responses
+</ParamField>
+
+<ParamField path="httpNetworkInterceptor" type="Interceptor?">
+  Optional OkHttp network interceptor for low-level network operations
+</ParamField>
+
+<ParamField path="deviceIdDelegate" type="(() -> String)?">
+  Optional function to provide a custom device ID. If null, a random ID is generated and stored
+</ParamField>
+
+### Properties
+
+#### extra
+
+```kotlin
+val extra: MutableMap<String, Any>
+```
+
+A mutable map for storing extra metadata to be sent with every request. Commonly used for authentication tokens and session data.
+
+**Example:**
+```kotlin
+client.extra["authToken"] = "abc123"
+client.extra["userId"] = 12345
+client.extra["sessionId"] = UUID.randomUUID().toString()
+```
+
+#### fingerprint
+
+```kotlin
+var fingerprint: String?
+```
+
+Device fingerprint sent with requests. Can be set to a custom value or defaults to Android ID.
+
+### Methods
+
+#### makeRequest
+
+```kotlin
+suspend fun makeRequest(
+    functionName: String,
+    bodyArgs: JsonObject?,
+    timeoutMillis: Long? = null
+): InternalResponse
+```
+
+Makes an HTTP request to call a remote function on your sdkgen API. This is a suspend function that must be called from a coroutine.
+
+<ParamField path="functionName" type="String" required>
+  The name of the API function to call
+</ParamField>
+
+<ParamField path="bodyArgs" type="JsonObject?" required>
+  The function arguments as a Gson JsonObject. Pass null for functions with no arguments.
+</ParamField>
+
+<ParamField path="timeoutMillis" type="Long?">
+  Optional timeout override for this specific request. If null, uses defaultTimeoutMillis.
+</ParamField>
+
+<ResponseField name="return" type="InternalResponse">
+  Response object containing error, result, and call statistics
+</ResponseField>
+
+**Example:**
+```kotlin
+lifecycleScope.launch {
+    val args = JsonObject().apply {
+        addProperty("id", 123)
+    }
+    
+    val response = client.makeRequest("getUser", args, timeoutMillis = 5000)
+    
+    if (response.error != null) {
+        handleError(response.error)
+    } else {
+        val user = response.result?.get("user")?.asJsonObject
+        println("User: $user")
+        println("Request took ${response.stats?.durationMillis}ms")
+    }
+}
+```
+
+#### getDeviceId
+
+```kotlin
+fun getDeviceId(): String
+```
+
+Returns the persistent device ID. Generates and stores a new ID on first call if one doesn't exist.
+
+<ResponseField name="return" type="String">
+  The device ID string
+</ResponseField>
+
+**Example:**
+```kotlin
+val deviceId = client.getDeviceId()
+Log.d("API", "Device ID: $deviceId")
+```
+
+#### setHttpClient
+
+```kotlin
+fun setHttpClient(client: OkHttpClient)
+```
+
+Replaces the internal OkHttp client with a custom instance. Useful for advanced configurations.
+
+<ParamField path="client" type="OkHttpClient" required>
+  The OkHttp client instance to use
+</ParamField>
+
+**Example:**
+```kotlin
+val customClient = OkHttpClient.Builder()
+    .connectTimeout(30, TimeUnit.SECONDS)
+    .addInterceptor(loggingInterceptor)
+    .build()
+
+client.setHttpClient(customClient)
+```
+
+## Data Classes
+
+### InternalResponse
+
+```kotlin
+data class InternalResponse(
+    val error: JsonObject?,
+    val result: JsonObject?,
+    val stats: CallStats?
+)
+```
+
+<ParamField path="error" type="JsonObject?">
+  Error object if the request failed, null on success
+</ParamField>
+
+<ParamField path="result" type="JsonObject?">
+  Result object if the request succeeded, null on error
+</ParamField>
+
+<ParamField path="stats" type="CallStats?">
+  Call statistics including duration. Null if request failed before completion.
+</ParamField>
+
+### CallStats
+
+```kotlin
+data class CallStats(
+    val durationMillis: Long
+)
+```
+
+<ParamField path="durationMillis" type="Long">
+  Total request duration in milliseconds
+</ParamField>
+
+## Type Adapters
+
+The runtime includes custom Gson type adapters for sdkgen types.
+
+### DateTimeAdapter
+
+Handles `datetime` type serialization/deserialization.
+
+```kotlin
+class DateTimeAdapter: TypeAdapter<Calendar>()
+```
+
+- **Format**: `yyyy-MM-dd'T'HH:mm:ss.SSS` in UTC
+- **Kotlin Type**: `java.util.Calendar`
+
+### DateAdapter
+
+Handles `date` type serialization/deserialization.
+
+```kotlin
+class DateAdapter: TypeAdapter<Calendar>()
+```
+
+- **Format**: `yyyy-MM-dd` in UTC  
+- **Kotlin Type**: `java.util.Calendar`
+
+### ByteArrayDeserializer
+
+Handles `bytes` type deserialization.
+
+```kotlin
+class ByteArrayDeserializer: JsonDeserializer<ByteArray>
+```
+
+- **Format**: Base64-encoded string
+- **Kotlin Type**: `ByteArray`
+
+## Device Information
+
+The Android runtime automatically collects and sends device information:
+
+```kotlin
+{
+  "id": String,              // Persistent device ID from SharedPreferences
+  "fingerprint": String,     // Android ID or custom fingerprint
+  "language": String,        // BCP-47 language tag (e.g., "en-US")
+  "platform": {
+    "version": String,       // Android OS version (e.g., "13")
+    "sdkVersion": Int,       // Android SDK version (e.g., 33)
+    "brand": String,         // Device brand (e.g., "Samsung")
+    "model": String,         // Device model (e.g., "SM-G998B")
+    "screen": {
+      "width": Int,          // Screen width in pixels
+      "height": Int          // Screen height in pixels
+    }
+  },
+  "timezone": String,        // Timezone display name
+  "type": "android",
+  "version": String          // App version from package manager
+}
+```
+
+## Error Handling
+
+The runtime maps HTTP and network errors to error responses:
+
+### Error Types
+
+| Scenario | Error Type | Message Source |
+|----------|-----------|----------------|
+| 5xx HTTP status | `Fatal` | `R.string.sdkgen_error_call_code` |
+| Response parsing failed | `Fatal` | `R.string.sdkgen_error_serialization` |
+| Timeout | `Connection` | `R.string.sdkgen_error_call_timeout` |
+| Network failure | `Fatal` | `R.string.sdkgen_error_call_failed_without_message` |
+| API error response | From API | API error object |
+
+### Required String Resources
+
+Add to your `res/values/strings.xml`:
+
+```xml
+<resources>
+    <string name="sdkgen_error_call_code">Server error (code %1$s)</string>
+    <string name="sdkgen_error_serialization">Failed to parse response</string>
+    <string name="sdkgen_error_call_timeout">Request timeout</string>
+    <string name="sdkgen_error_call_failed_without_message">Network request failed</string>
+    <string name="sdkgen_error_unknown">Unknown error occurred</string>
+</resources>
+```
+
+## Platform-Specific Considerations
+
+### Permissions
+
+Add to your `AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+```
+
+### ProGuard/R8
+
+If using code shrinking, add rules to keep Gson-serialized classes:
+
+```proguard
+# Keep sdkgen generated classes
+-keep class your.package.api.** { *; }
+
+# Keep Gson annotations
+-keepattributes Signature
+-keepattributes *Annotation*
+```
+
+### Espresso Testing
+
+The runtime includes `SdkgenIdlingResource` for Espresso UI tests:
+
+```kotlin
+import io.sdkgen.runtime.SdkgenIdlingResource
+import androidx.test.espresso.IdlingRegistry
+
+@Before
+fun setup() {
+    IdlingRegistry.getInstance().register(SdkgenIdlingResource.countingIdlingResource)
+}
+
+@After
+fun teardown() {
+    IdlingRegistry.getInstance().unregister(SdkgenIdlingResource.countingIdlingResource)
+}
+```
+
+## Complete Example
+
+```kotlin
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.google.gson.JsonObject
+import io.sdkgen.runtime.SdkgenHttpClient
+import kotlinx.coroutines.launch
+import okhttp3.Interceptor
+import okhttp3.logging.HttpLoggingInterceptor
+
+class MainActivity : AppCompatActivity() {
+    
+    private lateinit var api: SdkgenHttpClient
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Create logging interceptor
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+        
+        // Initialize API client
+        api = SdkgenHttpClient(
+            baseUrl = "https://api.example.com",
+            applicationContext = applicationContext,
+            defaultTimeoutMillis = 15000L,
+            httpInterceptor = loggingInterceptor
+        )
+        
+        // Set authentication token
+        api.extra["authToken"] = "abc123"
+        
+        // Make API calls
+        fetchUser()
+    }
+    
+    private fun fetchUser() {
+        lifecycleScope.launch {
+            val args = JsonObject().apply {
+                addProperty("id", 123)
+            }
+            
+            val response = api.makeRequest("getUser", args)
+            
+            if (response.error != null) {
+                val errorType = response.error.get("type").asString
+                val errorMessage = response.error.get("message").asString
+                
+                when (errorType) {
+                    "ValidationError" -> {
+                        // Handle validation error
+                        println("Validation failed: $errorMessage")
+                    }
+                    "AuthenticationError" -> {
+                        // Navigate to login
+                        println("Auth failed: $errorMessage")
+                    }
+                    else -> {
+                        println("Error: $errorMessage")
+                    }
+                }
+            } else {
+                val user = response.result?.getAsJsonObject("user")
+                println("User: $user")
+                println("Request took ${response.stats?.durationMillis}ms")
+            }
+        }
+    }
+    
+    private fun createUser(email: String, name: String) {
+        lifecycleScope.launch {
+            val args = JsonObject().apply {
+                addProperty("email", email)
+                addProperty("name", name)
+            }
+            
+            val response = api.makeRequest(
+                functionName = "createUser",
+                bodyArgs = args,
+                timeoutMillis = 20000L // Custom timeout
+            )
+            
+            // Handle response...
+        }
+    }
+}
+```
+
+## Advanced Configuration
+
+### Custom OkHttp Client
+
+```kotlin
+val customClient = OkHttpClient.Builder()
+    .connectTimeout(30, TimeUnit.SECONDS)
+    .readTimeout(30, TimeUnit.SECONDS)
+    .writeTimeout(30, TimeUnit.SECONDS)
+    .addInterceptor { chain ->
+        val request = chain.request().newBuilder()
+            .addHeader("X-Custom-Header", "value")
+            .build()
+        chain.proceed(request)
+    }
+    .certificatePinner(certificatePinner)
+    .build()
+
+api.setHttpClient(customClient)
+```
+
+### Custom Device ID
+
+```kotlin
+val api = SdkgenHttpClient(
+    baseUrl = "https://api.example.com",
+    applicationContext = context,
+    deviceIdDelegate = {
+        // Return custom device ID (e.g., from Firebase)
+        FirebaseInstallations.getInstance().id.await()
+    }
+)
+```

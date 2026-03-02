@@ -1,0 +1,121 @@
+---
+title: Server Implementation Overview
+description: Overview of sdkgen server implementations and architecture
+---
+
+sdkgen provides server implementations for multiple platforms, allowing you to build type-safe APIs with automatic code generation.
+
+## Available Server Implementations
+
+sdkgen currently supports server implementations for:
+
+- **Node.js**: Full-featured TypeScript server with HTTP server, middleware support, and REST API generation
+- **.NET**: C# and F# server implementations (see [.NET Server](/server/dotnet))
+
+## Core Concepts
+
+### API Definition
+
+All server implementations start with an API definition in `.sdkgen` files. The sdkgen CLI generates server code from these definitions:
+
+```bash
+npm run sdkgen src/api.sdkgen -o src/api.ts -t typescript_nodeserver
+```
+
+### Generated Code Structure
+
+The generated server code includes:
+
+- **Type Definitions**: Interfaces for all types and enums defined in your API
+- **Error Classes**: Custom error classes extending `Error` for use with `throw`
+- **ApiConfig Class**: Configuration class for setting up your API
+- **api Instance**: Pre-configured instance of `ApiConfig`
+
+### Function Handlers
+
+You implement API functions by assigning handlers to the generated `api.fn` object:
+
+```typescript
+import { api } from "./api";
+
+api.fn.getUser = async (ctx, { id }) => {
+  // ctx contains request context
+  // id is type-checked based on your .sdkgen definition
+  return {
+    name: "John",
+    age: 30
+  };
+};
+```
+
+### Context Object
+
+Every function handler receives a `Context` object containing:
+
+- `request`: Information about the incoming request (args, device info, IP, headers)
+- `response`: Response configuration (status code, headers)
+
+See [Node.js Server](/server/nodejs) for detailed context documentation.
+
+### Middleware System
+
+Middlewares intercept all API calls, allowing you to:
+
+- Log requests and responses
+- Implement authentication
+- Add rate limiting
+- Modify requests or responses
+- Handle errors globally
+
+See [Middleware System](/server/nodejs-middlewares) for details.
+
+## REST API Support
+
+sdkgen servers can expose REST endpoints alongside the native sdkgen protocol. Use the `@rest` annotation in your API definition:
+
+```sdkgen
+@rest(GET /users/{id})
+fn getUser(id: string): User
+```
+
+The server automatically handles:
+- Path parameters
+- Query parameters
+- Request/response body conversion
+- Content negotiation
+
+## Built-in Features
+
+### Introspection
+
+By default, servers expose:
+
+- **Playground**: Interactive API explorer at `/playground`
+- **AST JSON**: API structure at `/ast.json`
+- **Generated Clients**: Auto-generated client code at `/targets/*`
+- **Swagger UI**: OpenAPI documentation at `/swagger` (when REST endpoints are defined)
+
+### Health Checks
+
+The root endpoint `/` provides health check functionality:
+
+```bash
+curl http://localhost:8000/
+# {"ok": true}
+```
+
+Register custom health checks:
+
+```typescript
+server.registerHealthCheck(async () => {
+  // Check database connection, etc.
+  return true; // or false if unhealthy
+});
+```
+
+## Next Steps
+
+- [Node.js Server Basics](/server/nodejs)
+- [SdkgenHttpServer Class](/server/nodejs-http-server)
+- [Middleware System](/server/nodejs-middlewares)
+- [.NET Server](/server/dotnet)

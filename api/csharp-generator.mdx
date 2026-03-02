@@ -1,0 +1,145 @@
+---
+title: C# Generator
+description: API reference for the C# code generator
+---
+
+The C# generator creates server-side code for .NET applications from your API schema.
+
+## Installation
+
+```bash
+npm install @sdkgen/csharp-generator
+```
+
+## Functions
+
+### generateCSharpServerSource
+
+Generates C# server code for .NET environments.
+
+```typescript
+function generateCSharpServerSource(ast: AstRoot): string
+```
+
+<ParamField path="ast" type="AstRoot" required>
+  The parsed API schema from `@sdkgen/parser`
+</ParamField>
+
+**Returns:** Generated C# source code as a string
+
+**Output includes:**
+- `SdkgenGenerated` namespace containing all generated code
+- Abstract `Api` class extending `BaseApi`
+- Virtual method stubs for all API operations
+- `ExecuteFunction` method for request routing and deserialization
+- Struct definitions for all custom types
+- Enum definitions with proper C# syntax
+- Exception classes for all custom errors
+- Embedded AST JSON via `GetAstJson()` method
+
+**Dependencies:**
+- `Sdkgen.Runtime` - Required for `BaseApi`, `Context`, and base exception types
+- `System.Text.Json` - For JSON serialization/deserialization
+- `System.Numerics` - For `BigInteger` support
+
+## Generated Code Structure
+
+### Abstract API Class
+
+The generator creates an abstract `Api` class with virtual methods:
+
+```csharp
+public abstract class Api : BaseApi
+{
+    public virtual Task<ReturnType> OperationName(
+        Context ctx,
+        ParamType paramName
+    )
+    {
+        return Task.FromException<ReturnType>(
+            new FatalException("Function 'operationName' not implemented.")
+        );
+    }
+}
+```
+
+### Operation Methods
+
+Each API operation becomes a virtual method:
+
+- First parameter is always `Context ctx`
+- Subsequent parameters match the operation's argument types
+- Return type is `Task<T>` or `Task` for void operations
+- Default implementation throws `FatalException`
+
+### Exception Classes
+
+Custom error types become exception classes:
+
+```csharp
+public class CustomErrorException : SdkgenException
+{
+    public CustomErrorException(string message, Exception? inner = null)
+        : base("CustomError", message, inner) { }
+}
+```
+
+## Usage
+
+The C# generator is typically invoked via the sdkgen CLI:
+
+```bash
+sdkgen api.sdkgen -o Generated.cs -t csharp_server
+```
+
+## Programmatic Usage
+
+```typescript
+import { parse } from "@sdkgen/parser";
+import { generateCSharpServerSource } from "@sdkgen/csharp-generator";
+import { readFileSync, writeFileSync } from "fs";
+
+const source = readFileSync("api.sdkgen", "utf-8");
+const ast = parse(source);
+
+const csharpCode = generateCSharpServerSource(ast);
+writeFileSync("Generated.cs", csharpCode);
+```
+
+## Implementation Example
+
+To implement your API, create a class that inherits from the generated `Api` class:
+
+```csharp
+using SdkgenGenerated;
+
+public class MyApi : Api
+{
+    public override async Task<User> GetUser(Context ctx, string userId)
+    {
+        // Your implementation here
+        var user = await _database.FindUser(userId);
+        if (user == null)
+            throw new UserNotFoundException("User not found");
+        return user;
+    }
+}
+```
+
+## Type Mapping
+
+| sdkgen Type | C# Type |
+|-------------|----------|
+| `string` | `string` |
+| `int` | `int` |
+| `uint` | `uint` |
+| `float` | `double` |
+| `bool` | `bool` |
+| `bytes` | `byte[]` |
+| `bigint` | `BigInteger` |
+| `date` | `DateTime` |
+| `datetime` | `DateTime` |
+| `void` | (no return) |
+| Custom struct | Generated class |
+| Custom enum | Generated enum |
+| `T?` | `T?` (nullable) |

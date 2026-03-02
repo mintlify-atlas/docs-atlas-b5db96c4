@@ -1,0 +1,516 @@
+---
+title: "iOS Runtime API"
+description: "Swift/iOS runtime API reference for sdkgen on iOS platforms"
+---
+
+## Overview
+
+The iOS Runtime provides the HTTP client for making API calls from iOS applications using Swift. It uses Alamofire for networking and automatically collects device information including device model, screen size, and platform details.
+
+## Installation
+
+### CocoaPods
+
+Add to your `Podfile`:
+
+```ruby
+pod 'SdkgenRuntime'
+```
+
+### Swift Package Manager
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/sdkgen/ios-runtime.git", from: "1.0.0")
+]
+```
+
+## SdkgenHttpClient
+
+The main class for making HTTP requests from iOS applications.
+
+### Initializer
+
+```swift
+public init(baseUrl: String)
+```
+
+<ParamField path="baseUrl" type="String" required>
+  The base URL of your sdkgen API server (e.g., `https://api.example.com`)
+</ParamField>
+
+**Example:**
+```swift
+let api = SdkgenHttpClient(baseUrl: "https://api.example.com")
+```
+
+### Properties
+
+#### baseUrl
+
+```swift
+public var baseUrl: String
+```
+
+The base URL for API requests. Can be modified after initialization.
+
+**Example:**
+```swift
+api.baseUrl = "https://api-staging.example.com"
+```
+
+#### extraJson
+
+```swift
+public var extraJson: [String: Any]
+```
+
+A dictionary for storing extra metadata to be sent with every request. Commonly used for authentication tokens and session data.
+
+**Example:**
+```swift
+api.extraJson["authToken"] = "abc123"
+api.extraJson["userId"] = 12345
+api.extraJson["sessionId"] = UUID().uuidString
+```
+
+### Methods
+
+#### makeRequest
+
+```swift
+public func makeRequest<T: Codable>(
+    _ name: String,
+    _ args: [String: Any],
+    _ timeoutSeconds: Double? = nil,
+    completion: @escaping (T) -> Void,
+    onError: @escaping (SdkgenResponse.SdkgenError) -> Void
+)
+```
+
+Makes an HTTP request to call a remote function on your sdkgen API.
+
+<ParamField path="name" type="String" required>
+  The name of the API function to call
+</ParamField>
+
+<ParamField path="args" type="[String: Any]" required>
+  A dictionary of argument names to values
+</ParamField>
+
+<ParamField path="timeoutSeconds" type="Double?" default="35">
+  Optional timeout in seconds for the request. Defaults to 35 seconds if not specified.
+</ParamField>
+
+<ParamField path="completion" type="@escaping (T) -> Void" required>
+  Callback invoked with the decoded response on success. The generic type T must conform to Codable.
+</ParamField>
+
+<ParamField path="onError" type="@escaping (SdkgenResponse.SdkgenError) -> Void" required>
+  Callback invoked with error details on failure
+</ParamField>
+
+**Example:**
+```swift
+struct User: Codable {
+    let id: Int
+    let name: String
+    let email: String
+}
+
+api.makeRequest(
+    "getUser",
+    ["id": 123],
+    30.0,
+    completion: { (user: User) in
+        print("User: \(user.name)")
+    },
+    onError: { error in
+        print("Error: \(error.message)")
+        if error.type == "ValidationError" {
+            // Handle validation error
+        }
+    }
+)
+```
+
+**Behavior:**
+- Encodes arguments as JSON
+- Automatically includes device information
+- Generates and persists a unique device ID in UserDefaults
+- Sends extra metadata from `extraJson`
+- Uses Alamofire for networking
+- Decodes response to the specified Codable type
+- Validates JSON before decoding
+- Handles network errors and API errors
+
+## Error Handling
+
+### SdkgenError
+
+Error object returned when API calls fail.
+
+```swift
+public struct SdkgenError {
+    let message: String?
+    let code: Int?
+    let type: String?
+}
+```
+
+<ParamField path="message" type="String?">
+  Human-readable error message
+</ParamField>
+
+<ParamField path="code" type="Int?">
+  HTTP status code if available
+</ParamField>
+
+<ParamField path="type" type="String?">
+  Error type identifier (e.g., "ValidationError", "Fatal", "Connection")
+</ParamField>
+
+### Error Types
+
+The runtime distinguishes between different error types:
+
+| Type | Description |
+|------|-------------|
+| `Fatal` | Server errors, JSON parsing errors, or unexpected failures |
+| `Connection` | Network connectivity issues (no response code or data) |
+| API-defined | Custom error types defined in your API schema |
+
+### Error Handling Example
+
+```swift
+api.makeRequest(
+    "createUser",
+    ["email": "user@example.com", "name": "John Doe"],
+    completion: { (user: User) in
+        print("User created: \(user.id)")
+    },
+    onError: { error in
+        switch error.type {
+        case "ValidationError":
+            showAlert("Invalid input: \(error.message ?? "Unknown error")")
+        case "AuthenticationError":
+            navigateToLogin()
+        case "Connection":
+            showAlert("No internet connection")
+        default:
+            showAlert("An error occurred: \(error.message ?? "Unknown")")
+        }
+        
+        if let code = error.code {
+            print("HTTP status code: \(code)")
+        }
+    }
+)
+```
+
+## Device Information
+
+The iOS runtime automatically collects and sends device information:
+
+```swift
+{
+  "id": String,              // Persistent device ID from UserDefaults
+  "fingerprint": String,     // Persistent phone fingerprint from Keychain
+  "language": String,        // Preferred language (e.g., "en-US")
+  "platform": {
+    "version": String,       // iOS version (e.g., "17.0")
+    "brand": "Apple",
+    "model": String          // Device model (e.g., "iPhone15,2")
+  },
+  "type": "ios",
+  "screen": {
+    "width": CGFloat,        // Screen width in points
+    "height": CGFloat        // Screen height in points
+  },
+  "version": String          // App version from bundle
+}
+```
+
+### Device ID
+
+The device ID is automatically generated on first use and stored in `UserDefaults` with key `"device-id"`.
+
+### Phone Fingerprint
+
+A persistent device fingerprint is generated and stored securely in the Keychain using `KeychainSwift`. This provides a more permanent identifier that survives app reinstallation.
+
+## Request Format
+
+Each request sent by the runtime includes:
+
+```swift
+{
+  "version": 3,
+  "requestId": String,       // Random 8-byte hex string
+  "deviceInfo": {...},       // Device information object
+  "name": String,            // Function name
+  "args": {...},             // Function arguments
+  "extra": {...}             // Extra metadata from extraJson
+}
+```
+
+## Response Handling
+
+The runtime handles different response scenarios:
+
+### Success Response
+
+```swift
+{
+  "result": T  // Decoded to your Codable type
+}
+```
+
+### Error Response
+
+```swift
+{
+  "error": {
+    "type": String,
+    "message": String,
+    "data": Any?  // Optional error-specific data
+  }
+}
+```
+
+## Platform-Specific Considerations
+
+### App Transport Security
+
+If your API uses HTTP (not recommended for production), add to `Info.plist`:
+
+```xml
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+</dict>
+```
+
+For specific domains:
+
+```xml
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+        <key>api.example.com</key>
+        <dict>
+            <key>NSExceptionAllowsInsecureHTTPLoads</key>
+            <true/>
+        </dict>
+    </dict>
+</dict>
+```
+
+### Keychain Access
+
+The runtime uses `KeychainSwift` to store the device fingerprint. Ensure your app has appropriate keychain access groups configured if needed.
+
+### Background Requests
+
+Alamofire requests continue in the background by default. For long-running uploads/downloads, consider using `URLSessionConfiguration.background`.
+
+## Dependencies
+
+The iOS runtime depends on:
+
+- **Alamofire**: HTTP networking library
+- **DeviceKit**: Device model identification
+- **KeychainSwift**: Secure keychain storage
+
+## Complete Example
+
+```swift
+import UIKit
+import SdkgenRuntime
+
+class APIManager {
+    static let shared = APIManager()
+    
+    let client: SdkgenHttpClient
+    
+    private init() {
+        client = SdkgenHttpClient(baseUrl: "https://api.example.com")
+        
+        // Set authentication token from storage
+        if let token = UserDefaults.standard.string(forKey: "authToken") {
+            client.extraJson["authToken"] = token
+        }
+    }
+    
+    func setAuthToken(_ token: String) {
+        client.extraJson["authToken"] = token
+        UserDefaults.standard.set(token, forKey: "authToken")
+    }
+    
+    func clearAuth() {
+        client.extraJson.removeValue(forKey: "authToken")
+        UserDefaults.standard.removeObject(forKey: "authToken")
+    }
+}
+
+// Models
+struct User: Codable {
+    let id: Int
+    let name: String
+    let email: String
+    let createdAt: String
+}
+
+struct UserListResponse: Codable {
+    let users: [User]
+    let total: Int
+    let page: Int
+}
+
+// View Controller
+class UserViewController: UIViewController {
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        loadUser()
+    }
+    
+    func loadUser() {
+        let api = APIManager.shared.client
+        
+        api.makeRequest(
+            "getUser",
+            ["id": 123],
+            30.0,
+            completion: { [weak self] (user: User) in
+                DispatchQueue.main.async {
+                    self?.displayUser(user)
+                }
+            },
+            onError: { [weak self] error in
+                DispatchQueue.main.async {
+                    self?.handleError(error)
+                }
+            }
+        )
+    }
+    
+    func loadUsers(page: Int = 1) {
+        let api = APIManager.shared.client
+        
+        api.makeRequest(
+            "listUsers",
+            ["page": page, "limit": 20],
+            completion: { [weak self] (response: UserListResponse) in
+                DispatchQueue.main.async {
+                    print("Loaded \(response.users.count) of \(response.total) users")
+                    self?.displayUsers(response.users)
+                }
+            },
+            onError: { [weak self] error in
+                DispatchQueue.main.async {
+                    self?.handleError(error)
+                }
+            }
+        )
+    }
+    
+    func createUser(name: String, email: String) {
+        let api = APIManager.shared.client
+        
+        api.makeRequest(
+            "createUser",
+            ["name": name, "email": email],
+            completion: { [weak self] (user: User) in
+                DispatchQueue.main.async {
+                    self?.showSuccess("User created: \(user.name)")
+                }
+            },
+            onError: { [weak self] error in
+                DispatchQueue.main.async {
+                    self?.handleError(error)
+                }
+            }
+        )
+    }
+    
+    private func displayUser(_ user: User) {
+        // Update UI with user data
+    }
+    
+    private func displayUsers(_ users: [User]) {
+        // Update UI with user list
+    }
+    
+    private func handleError(_ error: SdkgenResponse.SdkgenError) {
+        let message = error.message ?? "An unknown error occurred"
+        
+        switch error.type {
+        case "ValidationError":
+            showAlert(title: "Invalid Input", message: message)
+        case "AuthenticationError":
+            // Clear auth and navigate to login
+            APIManager.shared.clearAuth()
+            navigateToLogin()
+        case "Connection":
+            showAlert(title: "No Connection", message: "Please check your internet connection")
+        default:
+            showAlert(title: "Error", message: message)
+        }
+    }
+    
+    private func showAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+    
+    private func showSuccess(_ message: String) {
+        // Show success message
+    }
+    
+    private func navigateToLogin() {
+        // Navigate to login screen
+    }
+}
+```
+
+## Testing
+
+### Unit Testing
+
+For unit tests, you can mock the `SdkgenHttpClient` or stub network responses:
+
+```swift
+import XCTest
+@testable import YourApp
+
+class APITests: XCTestCase {
+    var api: SdkgenHttpClient!
+    
+    override func setUp() {
+        super.setUp()
+        api = SdkgenHttpClient(baseUrl: "https://test.example.com")
+    }
+    
+    func testUserRequest() {
+        let expectation = self.expectation(description: "User request")
+        
+        api.makeRequest(
+            "getUser",
+            ["id": 1],
+            completion: { (user: User) in
+                XCTAssertEqual(user.id, 1)
+                expectation.fulfill()
+            },
+            onError: { error in
+                XCTFail("Request failed: \(error.message ?? "Unknown")")
+            }
+        )
+        
+        waitForExpectations(timeout: 5)
+    }
+}
+```

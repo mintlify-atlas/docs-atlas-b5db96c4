@@ -1,0 +1,405 @@
+---
+title: 'TypeScript Generators'
+description: 'Generate TypeScript code for Node.js servers, Node.js clients, and browser clients'
+---
+
+sdkgen provides four TypeScript generators that cover server-side, client-side, and type definition use cases.
+
+## Available generators
+
+<Tabs>
+  <Tab title="Node.js Server">
+    Generate server-side code for Node.js with Express or other frameworks.
+    
+    **Target:** `typescript_nodeserver`
+    
+    **Use case:** Building the API server that implements your operations.
+  </Tab>
+  <Tab title="Node.js Client">
+    Generate a client for Node.js applications.
+    
+    **Target:** `typescript_nodeclient`
+    
+    **Use case:** Calling your API from Node.js applications, scripts, or serverless functions.
+  </Tab>
+  <Tab title="Browser Client">
+    Generate a client optimized for browser environments.
+    
+    **Target:** `typescript_web`
+    
+    **Use case:** Calling your API from React, Vue, Angular, or vanilla JavaScript web apps.
+  </Tab>
+  <Tab title="Interfaces Only">
+    Generate only TypeScript type definitions.
+    
+    **Target:** `typescript_interfaces`
+    
+    **Use case:** Sharing type definitions across projects or with custom client implementations.
+  </Tab>
+</Tabs>
+
+## Node.js server
+
+Generate server code that you extend to implement your API operations.
+
+### Generate server code
+
+```bash
+sdkgen api.sdkgen -o src/api-server.ts -t typescript_nodeserver
+```
+
+### What gets generated
+
+The server generator creates:
+
+- **Type definitions**: Enums, interfaces, and error classes for all custom types
+- **ApiConfig class**: An abstract class with methods for each operation
+- **Context types**: Request context with user data and metadata
+- **AST JSON**: Embedded API definition for runtime validation
+
+### Generated code structure
+
+```typescript
+import { BaseApiConfig, Context, Fatal } from "@sdkgen/node-runtime";
+
+// Enum definitions
+export enum Status {
+  Active = "active",
+  Inactive = "inactive"
+}
+
+// Interface definitions
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  status: Status;
+}
+
+// Error classes
+export class NotFoundError extends SdkgenError {
+  // ...
+}
+
+// API configuration class
+export class ApiConfig<ExtraContextT> extends BaseApiConfig<ExtraContextT> {
+  declare fn: {
+    getUser: (
+      ctx: Context & ExtraContextT,
+      args: { id: string }
+    ) => Promise<User>;
+    // ... other operations
+  }
+  
+  astJson = { /* ... */ } as const
+}
+
+export const api = new ApiConfig<{}>();
+```
+
+### Implementing the server
+
+Extend the generated API config and implement your operations:
+
+```typescript
+import { api } from "./api-server";
+
+api.fn.getUser = async (ctx, { id }) => {
+  const user = await db.users.findById(id);
+  if (!user) {
+    throw new NotFoundError("User not found");
+  }
+  return user;
+};
+```
+
+### Dependencies
+
+Install the required runtime package:
+
+```bash
+npm install @sdkgen/node-runtime
+```
+
+## Node.js client
+
+Generate a client for calling your API from Node.js applications.
+
+### Generate client code
+
+```bash
+sdkgen api.sdkgen -o src/api-client.ts -t typescript_nodeclient
+```
+
+### What gets generated
+
+The Node.js client generator creates:
+
+- **Type definitions**: All types, enums, and error classes
+- **ApiClient class**: Client with methods for each operation
+- **Context support**: Pass context with user info and metadata
+- **Error handling**: Automatic error deserialization
+
+### Generated code structure
+
+```typescript
+import { Context, Fatal, SdkgenHttpClient } from "@sdkgen/node-runtime";
+import { PartialDeep } from "type-fest";
+
+// Type definitions
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// Client class
+export class ApiClient extends SdkgenHttpClient {
+  constructor(baseUrl: string) {
+    super(baseUrl, astJson, errClasses);
+  }
+  
+  getUser(
+    ctx: PartialDeep<Context> | null,
+    args: { id: string }
+  ): Promise<User> {
+    return this.makeRequest(ctx, "getUser", args);
+  }
+}
+```
+
+### Using the client
+
+```typescript
+import { ApiClient } from "./api-client";
+
+const client = new ApiClient("https://api.example.com");
+
+const user = await client.getUser(null, { id: "123" });
+console.log(user.name);
+```
+
+### Dependencies
+
+```bash
+npm install @sdkgen/node-runtime type-fest
+```
+
+## Browser client
+
+Generate a client optimized for browser environments.
+
+### Generate browser client
+
+```bash
+sdkgen api.sdkgen -o src/api.ts -t typescript_web
+```
+
+### What gets generated
+
+The browser client generator creates:
+
+- **Type definitions**: Browser-compatible types (uses `decimal.js-light` instead of `decimal.js`)
+- **ApiClient class**: Client without Node.js-specific context
+- **Simplified API**: No context parameter required
+- **Error handling**: Browser-friendly error classes
+
+### Generated code structure
+
+```typescript
+import { SdkgenHttpClient } from "@sdkgen/browser-runtime";
+
+// Type definitions
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// Browser client class
+export class ApiClient extends SdkgenHttpClient {
+  constructor(baseUrl: string) {
+    super(baseUrl, astJson, errClasses);
+  }
+  
+  getUser(args: { id: string }): Promise<User> {
+    return this.makeRequest("getUser", args);
+  }
+}
+```
+
+### Using the browser client
+
+```typescript
+import { ApiClient } from "./api";
+
+const api = new ApiClient("https://api.example.com");
+
+// In React component
+const user = await api.getUser({ id: "123" });
+```
+
+### Differences from Node.js client
+
+- No `Context` parameter in method calls
+- Uses lightweight `decimal.js-light` for decimal types
+- Smaller bundle size
+- Browser-optimized HTTP client
+
+### Dependencies
+
+```bash
+npm install @sdkgen/browser-runtime
+```
+
+## TypeScript interfaces only
+
+Generate only type definitions without client or server implementation.
+
+### Generate interfaces
+
+```bash
+sdkgen api.sdkgen -o src/types.ts -t typescript_interfaces
+```
+
+### What gets generated
+
+The interfaces generator creates:
+
+- **Enum definitions**: TypeScript enums for all enum types
+- **Interface definitions**: TypeScript interfaces for all struct types
+- **No runtime code**: Only type definitions, no client or server logic
+
+### Generated code structure
+
+```typescript
+// Enum definitions
+export enum Status {
+  Active = "active",
+  Inactive = "inactive"
+}
+
+export enum Role {
+  Admin = "admin",
+  User = "user",
+  Guest = "guest"
+}
+
+// Interface definitions
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  status: Status;
+  role: Role;
+}
+
+export interface Post {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string;
+}
+```
+
+### Use cases
+
+- **Shared types**: Share type definitions between multiple projects
+- **Custom implementations**: Use with your own client/server implementation
+- **Type checking**: Enable TypeScript checking without runtime dependencies
+- **Documentation**: Generate type documentation from your API definition
+
+### No dependencies
+
+The interfaces-only generator produces pure TypeScript with no external dependencies.
+
+## Common features
+
+All TypeScript generators share these features:
+
+### Decimal support
+
+When your API uses decimal types, the appropriate Decimal.js library is imported:
+- **Node.js**: `decimal.js`
+- **Browser**: `decimal.js-light`
+
+### Error handling
+
+Custom error types become TypeScript classes:
+
+```typescript
+export class NotFoundError extends SdkgenError {
+  constructor(message?: string) {
+    super("NotFound", message);
+  }
+}
+```
+
+Errors with data become `SdkgenErrorWithData`:
+
+```typescript
+export class ValidationError extends SdkgenErrorWithData<ValidationData> {
+  constructor(message?: string, data?: ValidationData) {
+    super("Validation", message, data);
+  }
+}
+```
+
+### Hidden operations
+
+Operations marked with `@hidden` annotation are excluded from client code but included in server code.
+
+### Optional parameters
+
+Optional types are properly typed with TypeScript's optional syntax:
+
+```typescript
+interface User {
+  name: string;
+  email?: string;  // Optional field
+}
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Separate API definition from implementation">
+    Keep your `.sdkgen` file separate from implementation code. This allows you to:
+    - Regenerate code without affecting implementation
+    - Share the API definition across teams
+    - Version control the API contract independently
+  </Accordion>
+  
+  <Accordion title="Don't modify generated files">
+    Never manually edit generated code. Instead:
+    - Update the `.sdkgen` file
+    - Regenerate the code
+    - Use TypeScript's type system to extend types if needed
+  </Accordion>
+  
+  <Accordion title="Use separate output directories">
+    Generate code into dedicated directories:
+    ```
+    src/
+      generated/     # Generated code
+        api-server.ts
+        api-client.ts
+      implementation/ # Your code
+        handlers.ts
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="C# server" icon="code" href="/generators/csharp">
+  Generate C# server code for .NET
+</Card>
+
+<Card title="Mobile clients" icon="mobile" href="/generators/dart-flutter">
+  Generate mobile client code
+</Card>
+
+</CardGroup>

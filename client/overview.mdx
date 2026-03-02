@@ -1,0 +1,202 @@
+---
+title: 'Client Implementation Overview'
+description: 'Learn how to use sdkgen clients to connect to your API from different platforms'
+---
+
+## Introduction
+
+Sdkgen automatically generates type-safe API clients for multiple platforms. Each client provides:
+
+- **Type safety**: Full TypeScript/language-specific types for all API calls
+- **Automatic encoding/decoding**: Handles data serialization transparently
+- **Error handling**: Structured error types with proper error propagation
+- **Device tracking**: Automatic device information collection
+- **Request hooks**: Customizable success and error callbacks
+
+## Supported Platforms
+
+Sdkgen supports client generation for:
+
+<CardGroup cols={2}>
+  <Card title="Browser/Web" icon="globe" href="/client/browser">
+    JavaScript/TypeScript client for web applications using XMLHttpRequest
+  </Card>
+  
+  <Card title="Node.js" icon="node-js" href="/client/nodejs">
+    Server-side JavaScript client using native HTTP/HTTPS modules
+  </Card>
+  
+  <Card title="Dart/Flutter" icon="mobile" href="/client/mobile">
+    Cross-platform client for Flutter mobile apps
+  </Card>
+  
+  <Card title="Kotlin/Swift" icon="mobile" href="/client/mobile">
+    Native mobile clients for Android and iOS
+  </Card>
+</CardGroup>
+
+## Core Concepts
+
+### SdkgenHttpClient
+
+All platform clients are based on the `SdkgenHttpClient` class, which provides:
+
+- **baseUrl**: The API endpoint URL
+- **astJson**: The API schema definition (generated from your .sdkgen file)
+- **errClasses**: Error class mappings for proper error handling
+- **extra**: A Map/dictionary for passing additional metadata with requests
+
+### Making Requests
+
+Clients expose a `makeRequest` method that:
+
+1. Encodes function arguments according to the API schema
+2. Sends the request with device information
+3. Decodes the response
+4. Handles errors and transforms them into typed exceptions
+
+### Device Information
+
+Each client automatically collects and sends device information:
+
+<Tabs>
+  <Tab title="Browser">
+    ```json
+    {
+      "id": "<unique-device-id>",
+      "type": "web",
+      "language": "en-US",
+      "timezone": "America/New_York",
+      "platform": {
+        "browserUserAgent": "Mozilla/5.0..."
+      },
+      "version": "<script-src>"
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Node.js">
+    ```json
+    {
+      "id": "<hostname>",
+      "type": "node"
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Dart">
+    ```json
+    {
+      "id": "<unique-device-id>",
+      "type": "mobile",
+      "platform": "android" | "ios"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Error Handling
+
+All clients use a structured error system:
+
+### Base Error Types
+
+- **SdkgenError**: Base error class with `message` and `type` properties
+- **SdkgenErrorWithData**: Error class that includes additional typed data
+- **Fatal**: Catch-all error for connection issues and unexpected failures
+
+### Error Flow
+
+1. Server returns an error response
+2. Client matches error type to registered error class
+3. Error is decoded with proper type information
+4. Typed exception is thrown
+
+```typescript
+try {
+  const result = await api.someFunction();
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error('Validation failed:', error.data);
+  } else if (error instanceof Fatal) {
+    console.error('Connection error:', error.message);
+  }
+}
+```
+
+## Extra Metadata
+
+You can attach additional data to all requests using the `extra` property:
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```typescript
+    client.extra.set('authToken', 'bearer-token-123');
+    client.extra.set('sessionId', 'session-456');
+    
+    // All subsequent requests will include this metadata
+    await client.makeRequest('getUser', { id: '123' });
+    ```
+  </Tab>
+  
+  <Tab title="Dart">
+    ```dart
+    client.extra['authToken'] = 'bearer-token-123';
+    client.extra['sessionId'] = 'session-456';
+    
+    // All subsequent requests will include this metadata
+    await client.makeRequest('getUser', {'id': '123'});
+    ```
+  </Tab>
+</Tabs>
+
+## Request Lifecycle
+
+Every API call follows this flow:
+
+<Steps>
+  <Step title="Encode Arguments">
+    Function arguments are encoded according to the API schema's type definitions.
+  </Step>
+  
+  <Step title="Build Request">
+    Request object is constructed with:
+    - Function name
+    - Encoded arguments
+    - Device information
+    - Extra metadata
+    - Unique request ID
+  </Step>
+  
+  <Step title="Send Request">
+    HTTP POST request is sent to `{baseUrl}/{functionName}` with `Content-Type: application/sdkgen`.
+  </Step>
+  
+  <Step title="Process Response">
+    Response is parsed, decoded according to the return type schema, and returned.
+  </Step>
+  
+  <Step title="Handle Errors">
+    If an error occurs, it's transformed into the appropriate error class and thrown.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Browser Client" icon="globe" href="/client/browser">
+    Learn how to use the browser client in web applications
+  </Card>
+  
+  <Card title="Node.js Client" icon="node-js" href="/client/nodejs">
+    Implement server-to-server communication with Node.js
+  </Card>
+  
+  <Card title="Mobile Clients" icon="mobile" href="/client/mobile">
+    Build mobile apps with Dart, Kotlin, or Swift clients
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation" href="/concepts/errors">
+    Deep dive into error handling and custom error types
+  </Card>
+</CardGroup>

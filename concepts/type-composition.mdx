@@ -1,0 +1,624 @@
+---
+title: "Type Composition"
+description: "Combine and extend types using spreads and composition patterns"
+---
+
+As your API grows, you'll want to reuse and combine types to avoid repetition and maintain consistency. sdkgen provides the spread operator (`...`) to compose types from existing definitions.
+
+## The Spread Operator
+
+The spread operator (`...`) copies all fields from one type into another. It's used within composite type definitions:
+
+```sdkgen
+type BasicUser {
+  id: uuid
+  name: string
+}
+
+type User {
+  email: string
+  ...BasicUser
+  friends: BasicUser[]
+}
+```
+
+The `User` type will have 4 fields: `email`, `id`, `name`, and `friends`.
+
+## Basic Spread Example
+
+### Without Spread (Repetitive)
+
+```sdkgen
+type BasicUser {
+  id: uuid
+  name: string
+}
+
+type User {
+  email: string
+  id: uuid          // Duplicated
+  name: string      // Duplicated
+  friends: BasicUser[]
+}
+```
+
+### With Spread (DRY)
+
+```sdkgen
+type BasicUser {
+  id: uuid
+  name: string
+}
+
+type User {
+  email: string
+  ...BasicUser      // Copies id and name
+  friends: BasicUser[]
+}
+```
+
+Both definitions are functionally identical, but the spread version avoids repetition.
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Shared Timestamps">
+    Add common timestamp fields to multiple types:
+    
+    ```sdkgen
+    type Timestamps {
+      createdAt: datetime
+      updatedAt: datetime
+    }
+    
+    type User {
+      id: uuid
+      name: string
+      email: email
+      ...Timestamps
+    }
+    
+    type Post {
+      id: uuid
+      authorId: uuid
+      title: string
+      content: string
+      ...Timestamps
+    }
+    
+    type Comment {
+      id: uuid
+      postId: uuid
+      authorId: uuid
+      text: string
+      ...Timestamps
+    }
+    ```
+    
+    Each type now has `createdAt` and `updatedAt` fields without repetition.
+  </Accordion>
+
+  <Accordion title="Identifiable Resources">
+    Share common identification fields:
+    
+    ```sdkgen
+    type Identifiable {
+      id: uuid
+      createdAt: datetime
+    }
+    
+    type User {
+      ...Identifiable
+      name: string
+      email: email
+    }
+    
+    type Product {
+      ...Identifiable
+      name: string
+      price: money
+      stock: uint
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Metadata Fields">
+    Add common metadata across types:
+    
+    ```sdkgen
+    type AuditInfo {
+      createdBy: uuid
+      createdAt: datetime
+      modifiedBy: uuid?
+      modifiedAt: datetime?
+    }
+    
+    type Document {
+      id: uuid
+      title: string
+      content: string
+      ...AuditInfo
+    }
+    
+    type Contract {
+      id: uuid
+      parties: string[]
+      terms: string
+      ...AuditInfo
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Address Information">
+    Reuse address structures:
+    
+    ```sdkgen
+    type Address {
+      street: string
+      city: string
+      state: string
+      postalCode: string
+      country: string
+    }
+    
+    type PhysicalAddress {
+      ...Address
+      apartment: string?
+      instructions: string?
+    }
+    
+    type User {
+      id: uuid
+      name: string
+      homeAddress: Address?
+      billingAddress: Address?
+      shippingAddress: PhysicalAddress?
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Multiple Spreads
+
+A type can include multiple spreads to combine fields from several sources:
+
+```sdkgen
+type Identifiable {
+  id: uuid
+}
+
+type Timestamps {
+  createdAt: datetime
+  updatedAt: datetime
+}
+
+type Auditable {
+  createdBy: uuid
+  modifiedBy: uuid?
+}
+
+type Post {
+  ...Identifiable
+  ...Timestamps
+  ...Auditable
+  title: string
+  content: string
+  authorId: uuid
+}
+```
+
+The `Post` type will have all fields from `Identifiable`, `Timestamps`, `Auditable`, plus its own fields.
+
+## Field Override Rules
+
+<Warning>
+When field names conflict, spreads always take precedence over local field definitions, and later spreads override earlier ones.
+</Warning>
+
+### Local vs Spread Fields
+
+```sdkgen
+type A {
+  foo: int
+}
+
+type B {
+  foo: string  // Local definition
+  ...A         // Spread overrides local
+}
+```
+
+**Result:** `B` has field `foo` of type `int` (from the spread, not the local definition).
+
+### Multiple Spreads
+
+```sdkgen
+type A {
+  foo: int
+}
+
+type B {
+  foo: string
+}
+
+type C {
+  ...B    // foo: string
+  ...A    // foo: int (overrides B)
+}
+```
+
+**Result:** `C` has field `foo` of type `int` (from `A`, the last spread).
+
+### Combined Example
+
+```sdkgen
+type A { foo: int }
+type B { foo: string }
+type C { bar: int }
+
+type Test1 {
+  ...B
+  ...A
+}
+// Result: foo: int (A overrides B)
+
+type Test2 {
+  ...C
+  bar: string
+}
+// Result: bar: int (spread overrides local)
+
+type Test3 {
+  bar: string
+  ...C
+  foo: bool
+}
+// Result: bar: int (spread overrides local)
+//         foo: bool (local field, no conflict)
+```
+
+<Info>
+The override rules exist to ensure consistent behavior, but it's best practice to avoid field name conflicts entirely.
+</Info>
+
+## Practical Examples
+
+### E-commerce System
+
+```sdkgen
+// Base types
+type Identifiable {
+  id: uuid
+}
+
+type Timestamps {
+  createdAt: datetime
+  updatedAt: datetime
+}
+
+type SoftDeletable {
+  deletedAt: datetime?
+}
+
+// Product types
+type BaseProduct {
+  ...Identifiable
+  ...Timestamps
+  name: string
+  description: string
+  price: money
+}
+
+type PhysicalProduct {
+  ...BaseProduct
+  weight: decimal
+  dimensions: {
+    length: decimal
+    width: decimal
+    height: decimal
+  }
+  stock: uint
+}
+
+type DigitalProduct {
+  ...BaseProduct
+  downloadUrl: url
+  fileSize: bigint
+}
+
+// Order types
+type OrderItem {
+  productId: uuid
+  quantity: uint
+  price: money
+}
+
+type Order {
+  ...Identifiable
+  ...Timestamps
+  ...SoftDeletable
+  userId: uuid
+  items: OrderItem[]
+  total: money
+  status: enum { pending paid shipped delivered cancelled }
+}
+```
+
+### User Management System
+
+```sdkgen
+// Common fields
+type Entity {
+  id: uuid
+  createdAt: datetime
+  updatedAt: datetime
+}
+
+type ContactInfo {
+  email: email
+  phone: string?
+}
+
+type Address {
+  street: string
+  city: string
+  state: string
+  country: string
+  postalCode: string
+}
+
+// User types
+type BasicUser {
+  ...Entity
+  ...ContactInfo
+  name: string
+  avatar: url?
+}
+
+type FullUser {
+  ...BasicUser
+  address: Address?
+  dateOfBirth: date?
+  bio: string?
+  preferences: json
+}
+
+type AdminUser {
+  ...FullUser
+  permissions: string[]
+  department: string
+  employeeId: string
+}
+```
+
+### Blog Platform
+
+```sdkgen
+// Shared types
+type Authored {
+  authorId: uuid
+  authorName: string
+}
+
+type Trackable {
+  createdAt: datetime
+  updatedAt: datetime
+  publishedAt: datetime?
+}
+
+type Engageable {
+  viewCount: uint
+  likeCount: uint
+  commentCount: uint
+}
+
+// Content types
+type Post {
+  id: uuid
+  ...Authored
+  ...Trackable
+  ...Engageable
+  title: string
+  content: string
+  tags: string[]
+  featured: bool
+}
+
+type Comment {
+  id: uuid
+  postId: uuid
+  ...Authored
+  ...Trackable
+  content: string
+  parentId: uuid?  // For nested comments
+}
+
+type Draft {
+  id: uuid
+  ...Authored
+  ...Trackable
+  title: string?
+  content: string
+  autoSaved: bool
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Create Reusable Base Types">
+    Extract common fields into base types that can be spread:
+    
+    ```sdkgen
+    // ✅ Good - reusable patterns
+    type Timestamps {
+      createdAt: datetime
+      updatedAt: datetime
+    }
+    
+    type User { ...Timestamps, name: string }
+    type Post { ...Timestamps, title: string }
+    
+    // ❌ Avoid - repetition
+    type User {
+      createdAt: datetime
+      updatedAt: datetime
+      name: string
+    }
+    
+    type Post {
+      createdAt: datetime
+      updatedAt: datetime
+      title: string
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Avoid Field Name Conflicts">
+    Design base types to avoid conflicts:
+    
+    ```sdkgen
+    // ✅ Good - no conflicts
+    type Timestamps {
+      createdAt: datetime
+      updatedAt: datetime
+    }
+    
+    type Identifiable {
+      id: uuid
+    }
+    
+    type User {
+      ...Identifiable
+      ...Timestamps
+      name: string
+    }
+    
+    // ❌ Avoid - conflicting field names
+    type TypeA { id: int }
+    type TypeB { id: string }
+    
+    type Combined {
+      ...TypeA
+      ...TypeB  // Which id wins?
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use Semantic Names">
+    Base type names should clearly indicate what they add:
+    
+    ```sdkgen
+    // ✅ Good - clear purpose
+    type Timestamps { ... }
+    type Auditable { ... }
+    type SoftDeletable { ... }
+    type Geolocated { ... }
+    
+    // ❌ Avoid - unclear purpose
+    type Base { ... }
+    type Common { ... }
+    type Extra { ... }
+    ```
+  </Accordion>
+
+  <Accordion title="Compose from General to Specific">
+    Build specific types from general base types:
+    
+    ```sdkgen
+    // General base types
+    type Entity {
+      id: uuid
+      createdAt: datetime
+    }
+    
+    type ContentEntity {
+      ...Entity
+      title: string
+      content: string
+    }
+    
+    // Specific types
+    type BlogPost {
+      ...ContentEntity
+      authorId: uuid
+      tags: string[]
+    }
+    
+    type NewsArticle {
+      ...ContentEntity
+      source: string
+      publishedDate: date
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Don't Over-Abstract">
+    Only create base types when you have genuine reuse:
+    
+    ```sdkgen
+    // ✅ Good - used in multiple places
+    type Timestamps {
+      createdAt: datetime
+      updatedAt: datetime
+    }
+    
+    type User { ...Timestamps, name: string }
+    type Post { ...Timestamps, title: string }
+    type Comment { ...Timestamps, text: string }
+    
+    // ❌ Avoid - only used once
+    type SpecificFields {
+      verySpecificField: string
+    }
+    
+    type OnlyUser {
+      ...SpecificFields  // Why not just inline it?
+      name: string
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Limitations
+
+<Warning>
+**Important Limitations:**
+
+1. Types cannot be recursive (directly or indirectly)
+2. Spreads only work with named composite types
+3. You cannot spread primitive types, enums, or inline types
+</Warning>
+
+```sdkgen
+// ❌ Invalid - can't spread primitives
+type MyString {
+  ...string  // Error!
+}
+
+// ❌ Invalid - can't spread enums
+type MyEnum {
+  ...enum { a b c }  // Error!
+}
+
+// ✅ Valid - spreading named composite type
+type Base {
+  id: uuid
+}
+
+type Extended {
+  ...Base  // OK
+  name: string
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Type System" icon="shapes" href="/concepts/types">
+    Review all available types
+  </Card>
+  <Card title="API Description" icon="file-code" href="/concepts/api-description">
+    Learn more about .sdkgen files
+  </Card>
+</CardGroup>

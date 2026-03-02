@@ -1,0 +1,306 @@
+---
+title: "Changelog"
+description: "Release notes and version history for sdkgen"
+---
+
+# Changelog
+
+## 2.2.0 (2022-10-06)
+
+### Features:
+
+- Added `decimal` type for storing monetary numbers with decimal precision. See [#724](https://github.com/sdkgen/sdkgen/pull/724).
+- Added request interceptors in Flutter target. See [#725](https://github.com/sdkgen/sdkgen/pull/725).
+- Support for Node.js 18. Removed support for Node.js 12 and 17. Versions 14, 16 and 18 are supported. See [#703](https://github.com/sdkgen/sdkgen/pull/703).
+- Added support for Flutter 3 and removed support for Flutter 2. See [#704](https://github.com/sdkgen/sdkgen/pull/704).
+- Allow customization of device fingerprint in Android target. See [#734](https://github.com/sdkgen/sdkgen/pull/734).
+- Support for compiling multiple files in a single command. See [#690](https://github.com/sdkgen/sdkgen/pull/690).
+- Dependency updates.
+
+### Fixes:
+
+- Fixed support for running on Serverless services.
+- Added support for `json` type in REST requests with Swagger.
+- Other fixes. See [#684](https://github.com/sdkgen/sdkgen/pull/684), [#689](https://github.com/sdkgen/sdkgen/pull/689).
+- Fixed the order of arguments in the path of a REST request. See [#713](https://github.com/sdkgen/sdkgen/pull/713).
+- Adjustments in the Flutter generator to produce warning-free code. See [#726](https://github.com/sdkgen/sdkgen/pull/726), [#733](https://github.com/sdkgen/sdkgen/pull/733).
+
+## 2.1.0 (2022-05-09)
+
+- Support for using sdkgen in Serverless services (such as Google Cloud Functions or AWS Lambda), or alongside existing Node.js servers, like Express.js. To do this, simply create a `SdkgenHttpServer` instance as usual, and then register the `handleRequest` property as a function to receive HTTP requests. See details in the [documentation](https://sdkgen.github.io/dev/typescript_nodeserver/intro/#uso-do-sdkgen-com-um-servidor-http-existente-ou-cloud-functions). See [#678](https://github.com/sdkgen/sdkgen/pull/678).
+- Added `ctx.response.headers` and `ctx.response.statusCode` to allow modifying the headers and status code of the response of any request, especially useful for REST requests. See [#676](https://github.com/sdkgen/sdkgen/pull/676).
+- Fixes in type validation when more than one type has the same name in different locations. See [#672](https://github.com/sdkgen/sdkgen/pull/672).
+- Second argument of `SdkgenHttpServer` is now optional when `ExtraContext` is not used, simplifying code when dependency injection is not necessary.
+- Added support for ES2022 with TypeScript. See [#682](https://github.com/sdkgen/sdkgen/pull/682).
+- Improvement in the playground's "About" dialog. See [#683](https://github.com/sdkgen/sdkgen/pull/683).
+- Dependency updates.
+
+Contributions from 2 people made this new version possible: [@dgadelha](https://github.com/dgadelha) and [@lbguilherme](https://github.com/lbguilherme).
+
+## 2.0.2 (2022-03-14)
+
+- Re-release of 2.0.1 to fix publication process failure.
+
+## 2.0.1 (2022-03-07)
+
+- Fix in playground usage in production.
+- Fix in handling the `!secret` marker used together with the `@rest` annotation ([#659](https://github.com/sdkgen/sdkgen/pull/659)).
+- Dependency updates.
+
+Contributions from 4 people made this new version possible: [@dgadelha](https://github.com/dgadelha), [@GuiBernal](https://github.com/GuiBernal), [@joshuapassos](https://github.com/joshuapassos), and [@lbguilherme](https://github.com/lbguilherme).
+
+## 2.0.0 (2022-02-07)
+
+We've arrived at sdkgen 2.0.0, after almost 1 year of development, bringing many improvements and new features, with few changes that may impact projects. The expectation is that the update can be applied in most projects without any code changes. It is always recommended that the server updates first, before the clients. Let's see what we have in terms of new features:
+
+### Flutter 2 Support (sound null safety and Flutter Web)
+
+Flutter 2 was released alongside Dart 1.12 and brought optional nullable types support, a significant evolution. A good part of the ecosystem has already migrated and sdkgen is now built the same way. Both the generated Dart code and the `sdkgen_runtime` package use nullable types. In addition, Flutter Web is supported, just like Flutter for Android and iOS, offering the same functionalities.
+
+One detail that makes using this version easier is that previously the SDK had to be initialized inside a widget by passing access to the `BuildContext`. This is no longer necessary and can be used anywhere in the application, regardless of the UI.
+
+### Native iOS Client (experimental)
+
+A new native iOS client has been added, along with the Swift code generator. It can be used with the `swift_ios` or `rxswift_ios` target in the generator. In this version, this target is already functional and supports all features, however it has not been tested enough in production yet. In case of problems, please report. With sufficient testing happening, we can mark it as stable in one of the next versions.
+
+### F# Server (experimental)
+
+The original support for running sdkgen on .NET was built based on .NET Core using C#. This entire base has been rebuilt to make room for a new version in F#, much more modern and making it possible to be used in both F# and C# projects. Method implementation is easy and straightforward, just like in Node.js, maintaining the same simplicity. Currently the base features of sdkgen are supported, but some optional ones are not supported by this target, such as REST support and compatibility with legacy versions. It is being released as experimental as it has not been tested enough in production yet. The expectation is to release it as a stable and complete version in the near future.
+
+### New Playground
+
+Sdkgen has had an embedded playground since version 1.0.0, making it possible to inspect an API, get to know the available functions and invoke them with data for testing. We are now including a new playground, with support for:
+
+- Explore existing functions, along with documentation of what they do and the types they receive or return.
+- See how the function should be called in the languages supported by sdkgen.
+- Call functions, writing the arguments you want to pass.
+- Generate and download the generated code in all supported targets without having to install anything.
+- Use the advanced editor, where it is possible to write logic in JavaScript calling one or more functions to run directly in your browser.
+
+The new playground can even be used with APIs that have not yet been updated to sdkgen 2.0.0.
+
+Access at: [https://sdkgen.github.io/playground/](https://sdkgen.github.io/playground/) or on the `/playground` route of your API. `introspection` must be enabled.
+
+### Type Unions (experimental)
+
+In many cases it is necessary for a property to receive more than one data type depending on the situation, for example when a list of events is returned. Until now there was no good way to represent these cases, but now sdkgen supports aggregating additional data in the enum. An example of how this can be used:
+
+```
+type Event enum {
+  info(msg: string)
+  transaction(id: uuid, value: money, date: datetime, description: string)
+  refund(id: uuid)
+  ping
+}
+
+fn getEvents(): Event[]
+```
+
+In this example an `Event` can be any of the 4 possible types, depending on which one it is, it will be accompanied by some additional data. With this it is possible to express much more complex API scenarios, without having to make workarounds.
+
+Currently this model works in Node.js and on the Web with TypeScript, but is not yet enabled in other targets, which is why it is marked as experimental. We hope to provide it in all languages in the future.
+
+### Recursive Types
+
+Another difficult case to express is when types need to be arbitrarily recursive. For example, observe the case of comments on a post, where a comment can have other comments inside. It is now possible to declare it like this:
+
+```
+type Post {
+  body: string
+  authorId: uuid
+  comments: Comment[]
+}
+
+type Comment {
+  body: string
+  authorId: uuid
+  comments: Comment[]
+}
+```
+
+In this case comments can contain comments as many times as necessary, using an empty array to represent a comment that has no other comments inside. Recursive types can be used together with type unions as well.
+
+We hope with this to increase the expressiveness of the API description, representing real scenarios and avoiding the need to use the `json` type.
+
+### Other Changes
+
+All features marked as deprecated in previous versions have been removed. If they were used in your project, you will need to update.
+
+In addition, several internal fixes and improvements were applied, making the project more stable as a whole.
+
+### Acknowledgments
+
+Contributions from 13 people made this release possible: [@ahardmann](https://github.com/ahardmann), [@danielpsantiago](https://github.com/danielpsantiago), [@daniloapr](https://github.com/daniloapr), [@davidcpires](https://github.com/davidcpires), [@dgadelha](https://github.com/dgadelha), [@elcioabrahao](https://github.com/elcioabrahao), [@hofstede-matheus](https://github.com/hofstede-matheus), [@josecleiton](https://github.com/josecleiton), [@joshuapassos](https://github.com/joshuapassos), [@lbguilherme](https://github.com/lbguilherme), [@manoellribeiro](https://github.com/manoellribeiro), [@vhfmag](https://github.com/vhfmag), and [@Yansb](https://github.com/Yansb)
+
+## 1.6.2 (2021-10-27)
+
+- Swagger fix, regression caused in version 1.5.0.
+- Support for `bigint` type in Playground and Swagger.
+
+## 1.6.0 / 1.6.1 (2021-09-29)
+
+- Dependency updates.
+- Support for .NET 6.0.
+- Now the client can send extra parameters in requests ([#378](https://github.com/sdkgen/sdkgen/pull/378)).
+- New hook in browser-client for error interception ([#428](https://github.com/sdkgen/sdkgen/pull/428)).
+- Makes HTTP Headers case insensitive.
+- Removes console.error that was appearing in runtime ([#556](https://github.com/sdkgen/sdkgen/pull/556)).
+
+## 1.5.5 (2021-02-22)
+
+### Fixes:
+
+- Fix in loading `/playground` due to regression caused by version 1.5.4 ([#184](https://github.com/sdkgen/sdkgen/pull/184)).
+
+## 1.5.4 (2021-02-19)
+
+### Fixes:
+
+- Fix in receiving objects returned by the API in browser-runtime ([#181](https://github.com/sdkgen/sdkgen/pull/181)).
+- Fix in handling REST routes so that if more than one route matches a request, the one that contains the largest number of characters that are not part of the arguments is chosen ([#179](https://github.com/sdkgen/sdkgen/pull/179)).
+- Change in handling REST routes so that `string` type arguments within the path can no longer contain the `/` character ([#179](https://github.com/sdkgen/sdkgen/pull/179)).
+- Date validation in browser-runtime and node-runtime so that an invalid date is not accepted ([#180](https://github.com/sdkgen/sdkgen/pull/180)).
+- Dependency updates.
+
+## 1.5.3 (2021-02-10)
+
+### Fix:
+
+- Adjusted the `TypeDescription` type used for typing clients in Node and Web with respect to enums.
+
+This release does not include any changes in runtime behavior.
+
+## 1.5.2 (2021-02-09)
+
+### Fix:
+
+- The return type of the `encode` and `decode` functions of `@sdkgen/node-runtime` was being incorrectly inferred when the type had an enum. This typing has been fixed.
+
+This release does not include any changes in runtime behavior.
+
+## 1.5.1 (2021-01-26)
+
+No changes.
+
+## 1.5.0 (2021-01-26)
+
+### Middlewares
+
+It is now possible to add multiple middlewares in the configuration of an API, making it possible to take actions depending on the arguments or the return.
+
+```typescript
+api.use(async (ctx, next) => {
+  // Do anything with `ctx` here.
+  // The function name is `ctx.request.name` and the arguments `ctx.request.args`.
+  const reply = await next();
+  // Do anything with the response here.
+  return reply;
+});
+```
+
+The previous hooks of `onRequestStart` and `onRequestEnd` continue to work, but are now deprecated.
+
+You can, for example:
+
+- Save request and response data in a log;
+- Measure request statistics;
+- Control rate limit;
+- Block or redirect calls depending on the function and arguments;
+- Implement cache;
+- Implement retry depending on some specific error (calling `next` more than once);
+- Modify the returned error (`try`/`catch` around `next`).
+
+See [#161](https://github.com/sdkgen/sdkgen/pull/161).
+
+### Other Changes
+
+- Support for Node.js 15 ([#115](https://github.com/sdkgen/sdkgen/pull/115)).
+- Renewed eslint configuration and stronger typing in all TypeScript packages ([#166](https://github.com/sdkgen/sdkgen/pull/166)).
+- Project license changed to MIT ([#167](https://github.com/sdkgen/sdkgen/pull/167)).
+- Dependency updates.
+
+## 1.4.4 (2021-01-26)
+
+### Fixes
+
+- Fix in Flutter runtime when throwing errors of type `SdkgenErrorWithData` ([#175](https://github.com/sdkgen/sdkgen/pull/175)).
+
+## 1.4.3 (2021-01-18)
+
+### Fixes
+
+- Flutter code generator with errors containing data (`SdkgenErrorWithData`) now produces valid code ([#171](https://github.com/sdkgen/sdkgen/pull/171)).
+- Android code generator now uses `SupervisorJob` ([#168](https://github.com/sdkgen/sdkgen/pull/168)).
+
+## 1.4.2 (2020-12-21)
+
+### Fixes
+
+- `SdkgenErrorWithData` will no longer be imported by generated code unnecessarily, avoiding problems with linter ([#141](https://github.com/sdkgen/sdkgen/pull/141)).
+- Fix in using `WebpackManifestPlugin` in playground.
+- Fix in syntax highlighting in Visual Studio Code for `error` ([#152](https://github.com/sdkgen/sdkgen/pull/152)).
+- Fix in processing the `money` type in Flutter ([#153](https://github.com/sdkgen/sdkgen/pull/153)).
+- Duplicated code removed ([#155](https://github.com/sdkgen/sdkgen/pull/155)).
+- Fix when generating error classes in Flutter ([#160](https://github.com/sdkgen/sdkgen/pull/160)).
+- Fix in processing the `json` type in Flutter ([#159](https://github.com/sdkgen/sdkgen/pull/159)).
+- Dependency updates.
+
+## 1.4.1 (2020-11-30)
+
+### Fixes
+
+- Regression fix in version 1.4.0 where browser-runtime did not return response content on success.
+- Support for primitive `email` type in Swagger generated for `@rest` functions ([#140](https://github.com/sdkgen/sdkgen/pull/140)).
+- Documentation example fix ([#137](https://github.com/sdkgen/sdkgen/pull/137)).
+
+## 1.4.0 (2020-11-19)
+
+### Documentation! ([#120](https://github.com/sdkgen/sdkgen/pull/120))
+
+We now have new documentation written in Portuguese for sdkgen. It will still be a focus of the next releases to ensure it contains all the necessary information to use and manipulate sdkgen. Contributions will always be welcome.
+
+Check it out at: https://sdkgen.github.io
+
+### Additional Data in Errors ([#133](https://github.com/sdkgen/sdkgen/pull/133))
+
+In sdkgen it has always been possible to define error types:
+
+```
+error InvalidArgument
+```
+
+It is now possible to include additional data (of any type) along with an error:
+
+```
+error InvalidArgument {
+  argumentName: string
+  reason: string
+}
+```
+
+And the error can be thrown as:
+
+```
+throw new InvalidArgument("Invalid argument!", { argumentName: "amount", reason: "Must be positive" });
+```
+
+Any type can be used, such as:
+
+```
+error NoFunds uint?
+```
+
+### Other Changes
+
+- Throwing errors in Node.js should be done through `throw new SomeError("message")` instead of `api.err.SomeError("message")`. The previous form is still available, but will produce a warning. ([#122](https://github.com/sdkgen/sdkgen/pull/122))
+- CLI is more friendly with improved `--help`, including in compatibility check mode `sdkgen compatibility --help`. ([#131](https://github.com/sdkgen/sdkgen/pull/131))
+- Support for `xml` type in REST call returns. ([#132](https://github.com/sdkgen/sdkgen/pull/132))
+- .NET 5.0 included in CI. ([#135](https://github.com/sdkgen/sdkgen/pull/135))
+- Dependency updates.
+
+### Fixes
+
+- Android and iOS device information is now correctly reported in Flutter. ([#126](https://github.com/sdkgen/sdkgen/pull/126))
+- Syntax coloring fixed for multi-line `@description` and `@arg` in VSCode. ([#128](https://github.com/sdkgen/sdkgen/pull/128))
+- Fix in HTTP status code in REST requests in case of Fatal error. ([#130](https://github.com/sdkgen/sdkgen/pull/130))
+- Fix in sending `bytes` type as function argument in Android. ([#134](https://github.com/sdkgen/sdkgen/pull/134))

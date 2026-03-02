@@ -1,0 +1,233 @@
+---
+title: Annotations System
+description: Use annotations to add metadata and behavior to your API definitions
+---
+
+Beyond types and functions in your `.sdkgen` file, you can add annotations to provide additional meaning and metadata. Each annotation has different characteristics and contexts where they can be applied.
+
+## `@description`
+
+The `@description` annotation can appear before functions, types, or fields. It adds documentation that appears in the playground and some generated targets. Use it to explain what a function does or the meaning of a field.
+
+### Basic Usage
+
+```sdkgen
+@description Details of a user.
+type User {
+  @description Unique identifier.
+  id: uuid
+
+  @description Display name chosen by the user.
+  name: string
+
+  @description Validated email address of the user.
+  email: string?
+}
+
+@description Gets the current user. Returns null if not logged in.
+fn getUser(): User?
+```
+
+### Multiline Descriptions
+
+Descriptions can span multiple lines using a backslash (`\`) at the end of each line:
+
+```sdkgen
+@description Returns the next available order for execution. This function \
+can be called in parallel by multiple clients. If no order is waiting, \
+execution will pause on the server until either an order becomes available \
+or 2 minutes have passed. After 2 minutes without an order, it returns \
+`null` and you should call again.
+fn getNextOrder(): Order?
+```
+
+<Note>
+You cannot duplicate `@description` annotations on the same item.
+</Note>
+
+## `@arg`
+
+Similar to `@description`, the `@arg` annotation documents the meaning of function arguments. It must be immediately followed by the argument name and its description, and can span multiple lines.
+
+```sdkgen
+@description Search for orders by user ID.
+@arg id Unique identifier of the order.
+@arg includeCanceled Set to `true` to include canceled orders, \
+otherwise use `false`.
+fn getOrder(id: uuid, includeCanceled: bool): Order
+```
+
+The `@arg` annotations appear in:
+- The playground interface
+- Generated client documentation
+- Swagger/OpenAPI parameter descriptions
+
+## `@throws`
+
+Functions can throw errors. In sdkgen, you define which errors exist (`error NotFound`, for example), and by default, any function can throw any error. This is simple but makes functions unpredictable for calling clients.
+
+The `@throws` annotation specifies which errors a function can throw during execution. This annotation can be included multiple times to specify different errors.
+
+```sdkgen
+error NotFound
+error Forbidden
+error NoFunds
+
+@throws NotFound
+@throws Forbidden
+fn getUser(id: uuid): User
+```
+
+In this example, `getUser` can throw `NotFound` or `Forbidden` errors.
+
+### Important Notes
+
+- All functions can throw the `Fatal` error when behavior is unexpected
+- `Fatal` errors should always be considered backend bugs
+- If a function throws an error not mapped with `@throws`, it's converted to `Fatal` for the client
+- When `@throws` is used, only the specified errors (plus `Fatal`) are possible
+- Without `@throws`, any defined error can be thrown
+
+### REST API Integration
+
+When using REST endpoints, `@throws` determines which error responses are documented in the Swagger/OpenAPI specification.
+
+## `@hidden`
+
+By default, all functions can be called in the playground and are part of generated client targets. If a function needs to exist but shouldn't be called normally, use `@hidden`.
+
+Hidden functions:
+- Don't appear in the playground
+- Don't exist in generated targets
+- Are useful for deprecating old functions
+- Are useful for REST-only endpoints
+
+```sdkgen
+@hidden
+fn getUser(): User
+
+fn getUserV2(): UserV2
+```
+
+<Warning>
+Hidden functions still exist and can still be called, especially by old clients. Don't use `@hidden` for security purposes.
+</Warning>
+
+### REST-Only Endpoints
+
+A common pattern is combining `@hidden` with `@rest` to create REST-only endpoints:
+
+```sdkgen
+@hidden
+@rest GET /health
+fn healthCheck(): bool
+```
+
+This creates a REST endpoint at `/health` without exposing the function in sdkgen clients.
+
+## `@statusCode`
+
+Applied to error declarations to designate the HTTP status code returned for that error. This only affects REST endpoints.
+
+```sdkgen
+@statusCode 404
+error NotFound
+
+@statusCode 403
+error Forbidden
+
+@statusCode 409
+error AlreadyExists
+```
+
+### Default Status Codes
+
+Without `@statusCode`, errors use these defaults:
+- `Fatal` error: `500 Internal Server Error`
+- Other errors: `400 Bad Request`
+
+### Usage in REST
+
+```sdkgen
+@statusCode 404
+error NotFound
+
+@statusCode 400
+error InvalidInput
+
+@throws NotFound
+@throws InvalidInput
+@rest GET /products/{id}
+fn getProduct(id: uuid): Product
+```
+
+This generates REST responses:
+- `200`: Success with product
+- `404`: NotFound error
+- `400`: InvalidInput error
+- `500`: Fatal error
+
+## `@rest`
+
+The `@rest` annotation creates REST/HTTP endpoints from your sdkgen functions. This is a complex annotation with its own syntax.
+
+See the [REST Endpoints](/advanced/rest-endpoints) page for complete documentation.
+
+Basic example:
+
+```sdkgen
+@rest GET /users/{id}
+fn getUser(id: uuid): User?
+
+@rest POST /users [body {user}]
+fn createUser(user: NewUser): User
+
+@rest PUT /users/{id} [body {updates}]
+fn updateUser(id: uuid, updates: UserUpdates): User
+
+@rest DELETE /users/{id}
+fn deleteUser(id: uuid): void
+```
+
+## Best Practices
+
+### Documentation
+
+Always document public APIs:
+
+```sdkgen
+@description Retrieves user profile information
+@arg userId The unique identifier of the user
+@throws NotFound If the user doesn't exist
+@throws Forbidden If the caller lacks permission
+fn getUserProfile(userId: uuid): UserProfile
+```
+
+### Error Handling
+
+Be explicit about errors for better client experience:
+
+```sdkgen
+// Good: Explicit error handling
+@throws NotFound
+@throws InvalidInput
+fn processPayment(orderId: uuid): PaymentResult
+
+// Avoid: No error specification
+fn processPayment(orderId: uuid): PaymentResult
+```
+
+### REST Endpoints
+
+Combine annotations for comprehensive REST APIs:
+
+```sdkgen
+@statusCode 404
+error ProductNotFound
+
+@description Get product details by ID
+@arg id The product identifier
+@throws ProductNotFound
+@rest GET /products/{id}
+fn getProduct(id: uuid): Product
+```

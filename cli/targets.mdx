@@ -1,0 +1,284 @@
+---
+title: Code Generation Targets
+description: Complete list of available code generation targets in sdkgen
+---
+
+The sdkgen CLI can generate code for multiple platforms and languages. Use the `-t` or `--target` option to specify your desired target.
+
+## TypeScript Targets
+
+### typescript_nodeserver
+
+Generates a TypeScript server implementation for Node.js.
+
+```bash
+sdkgen src/api.sdkgen -o src/server.ts -t typescript_nodeserver
+```
+
+**Use case:** Building backend APIs with Node.js
+
+**Output:** TypeScript file with server-side type definitions and request handlers
+
+**Key features:**
+- Full type safety for request/response types
+- Automatic request validation
+- Async/await support
+- Integration with Express or other Node.js frameworks
+
+### typescript_nodeclient
+
+Generates a TypeScript client for Node.js applications.
+
+```bash
+sdkgen src/api.sdkgen -o src/client.ts -t typescript_nodeclient
+```
+
+**Use case:** Node.js applications consuming your API (CLI tools, backend services, etc.)
+
+**Output:** TypeScript client with strongly-typed API methods
+
+**Key features:**
+- Promise-based API calls
+- Full TypeScript type safety
+- Uses Node.js HTTP client
+- Automatic request/response serialization
+
+### typescript_web
+
+Generates a TypeScript client optimized for web browsers.
+
+```bash
+sdkgen src/api.sdkgen -o src/api-client.ts -t typescript_web
+```
+
+**Use case:** Web applications (React, Vue, Angular, Svelte, etc.)
+
+**Output:** Browser-compatible TypeScript client
+
+**Key features:**
+- Uses fetch API for HTTP requests
+- Works with all modern browsers
+- Tree-shakeable for optimal bundle size
+- Compatible with all frontend frameworks
+
+### typescript_interfaces
+
+Generates only TypeScript type definitions without client or server logic.
+
+```bash
+sdkgen src/api.sdkgen -o src/types.ts -t typescript_interfaces
+```
+
+**Use case:** Sharing type definitions across projects or for custom implementations
+
+**Output:** Pure TypeScript interfaces and types
+
+**Key features:**
+- No runtime code, only types
+- Can be used with custom HTTP clients
+- Useful for sharing types between packages
+- Minimal output size
+
+## Mobile Targets
+
+### flutter
+
+Generates a Dart client for Flutter applications.
+
+```bash
+sdkgen src/api.sdkgen -o lib/api.dart -t flutter
+```
+
+**Use case:** Flutter mobile and web applications
+
+**Output:** Dart file with Flutter-compatible API client
+
+**Key features:**
+- Works with Flutter's async patterns
+- Full Dart type safety
+- Compatible with iOS, Android, web, and desktop Flutter apps
+- Uses Dart's http package
+
+### kotlin_android
+
+Generates a Kotlin client for Android applications with callback support.
+
+```bash
+sdkgen src/api.sdkgen -o app/src/main/java/Api.kt -t kotlin_android
+```
+
+**Use case:** Native Android applications
+
+**Output:** Kotlin client with callback-based API
+
+**Key features:**
+- Callback-based asynchronous operations
+- Integrates with Android lifecycle
+- Null safety with Kotlin's type system
+- Ready for use with coroutines
+
+### kotlin_android_without_callbacks
+
+Generates a Kotlin client for Android applications without callbacks (suspend functions).
+
+```bash
+sdkgen src/api.sdkgen -o app/src/main/java/Api.kt -t kotlin_android_without_callbacks
+```
+
+**Use case:** Modern Android applications using Kotlin coroutines
+
+**Output:** Kotlin client with suspend functions
+
+**Key features:**
+- Uses Kotlin coroutines (suspend functions)
+- Cleaner async/await style code
+- Better suited for modern Android architecture
+- No callback nesting
+
+### swift_ios
+
+Generates a Swift client for iOS applications.
+
+```bash
+sdkgen src/api.sdkgen -o iOS/Api.swift -t swift_ios
+```
+
+**Use case:** Native iOS applications with UIKit or SwiftUI
+
+**Output:** Swift client with completion handlers
+
+**Key features:**
+- Completion handler-based API
+- Swift type safety
+- Compatible with iOS, iPadOS, macOS, watchOS, and tvOS
+- Works with async/await in modern Swift
+
+### rxswift_ios
+
+Generates a Swift client for iOS applications using RxSwift.
+
+```bash
+sdkgen src/api.sdkgen -o iOS/Api.swift -t rxswift_ios
+```
+
+**Use case:** iOS applications using reactive programming with RxSwift
+
+**Output:** Swift client returning RxSwift Observables
+
+**Key features:**
+- Returns Observable for all API calls
+- Integrates with RxSwift ecosystem
+- Enables reactive programming patterns
+- Better composition of async operations
+
+## Server Targets
+
+### csharp_server
+
+Generates a C# server implementation for .NET applications.
+
+```bash
+sdkgen src/api.sdkgen -o Server/Api.cs -t csharp_server
+```
+
+**Use case:** Building APIs with .NET/ASP.NET Core
+
+**Output:** C# server code with type-safe handlers
+
+**Key features:**
+- Full C# type safety
+- Async/await support
+- Compatible with ASP.NET Core
+- Integrates with .NET dependency injection
+
+### fsharp_server
+
+Generates an F# server implementation for .NET applications.
+
+```bash
+sdkgen src/api.sdkgen -o Server/Api.fs -t fsharp_server
+```
+
+**Use case:** Building functional APIs with F# and .NET
+
+**Output:** F# server code with functional patterns
+
+**Key features:**
+- Functional programming style
+- F# type system benefits
+- Pattern matching for request handling
+- Compatible with ASP.NET Core
+
+## Target Selection Guide
+
+<AccordionGroup>
+  <Accordion title="I'm building a web frontend">
+    Use **typescript_web** for React, Vue, Angular, Svelte, or any other web framework.
+    
+    ```bash
+    sdkgen api.sdkgen -o src/api.ts -t typescript_web
+    ```
+  </Accordion>
+
+  <Accordion title="I'm building a Node.js backend">
+    Use **typescript_nodeserver** for the server implementation.
+    
+    ```bash
+    sdkgen api.sdkgen -o src/server.ts -t typescript_nodeserver
+    ```
+  </Accordion>
+
+  <Accordion title="I'm building a mobile app">
+    - **Flutter (iOS + Android):** Use `flutter`
+    - **Native Android:** Use `kotlin_android` or `kotlin_android_without_callbacks`
+    - **Native iOS:** Use `swift_ios` or `rxswift_ios` (if using RxSwift)
+  </Accordion>
+
+  <Accordion title="I'm building a .NET backend">
+    - **C#:** Use `csharp_server`
+    - **F#:** Use `fsharp_server`
+  </Accordion>
+
+  <Accordion title="I need type definitions only">
+    Use **typescript_interfaces** to generate only TypeScript types without any client/server logic.
+    
+    ```bash
+    sdkgen api.sdkgen -o src/types.ts -t typescript_interfaces
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Multi-Target Generation
+
+You can generate code for multiple targets by running the CLI multiple times:
+
+```bash
+# Generate server
+sdkgen src/api.sdkgen -o src/server.ts -t typescript_nodeserver
+
+# Generate web client
+sdkgen src/api.sdkgen -o src/client.ts -t typescript_web
+
+# Generate mobile clients
+sdkgen src/api.sdkgen -o mobile/flutter/lib/api.dart -t flutter
+sdkgen src/api.sdkgen -o mobile/android/Api.kt -t kotlin_android
+sdkgen src/api.sdkgen -o mobile/ios/Api.swift -t swift_ios
+```
+
+This enables you to maintain a single API definition while supporting multiple platforms.
+
+## Complete Target List
+
+All available targets:
+
+- `typescript_nodeserver` - TypeScript server for Node.js
+- `typescript_nodeclient` - TypeScript client for Node.js
+- `typescript_web` - TypeScript client for web browsers
+- `typescript_interfaces` - TypeScript type definitions only
+- `flutter` - Dart client for Flutter
+- `csharp_server` - C# server for .NET
+- `fsharp_server` - F# server for .NET
+- `kotlin_android` - Kotlin client for Android (with callbacks)
+- `kotlin_android_without_callbacks` - Kotlin client for Android (suspend functions)
+- `swift_ios` - Swift client for iOS
+- `rxswift_ios` - RxSwift client for iOS

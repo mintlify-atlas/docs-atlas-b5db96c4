@@ -1,0 +1,360 @@
+---
+title: SdkgenHttpServer Class
+description: Complete API reference for the SdkgenHttpServer class
+---
+
+The `SdkgenHttpServer` class provides a complete HTTP server implementation for sdkgen APIs.
+
+## Constructor
+
+```typescript
+new SdkgenHttpServer<ExtraContextT>(apiConfig, extraContext?)
+```
+
+<ParamField path="apiConfig" type="BaseApiConfig<ExtraContextT>" required>
+  The API configuration object (usually the generated `api` instance)
+</ParamField>
+
+<ParamField path="extraContext" type="ExtraContextT">
+  Optional extra context to merge into every request context. Use this to inject dependencies like database connections.
+</ParamField>
+
+### Example
+
+```typescript
+import { SdkgenHttpServer } from "@sdkgen/node-runtime";
+import { api } from "./api";
+
+interface MyContext {
+  db: Database;
+}
+
+const server = new SdkgenHttpServer<MyContext>(api, {
+  db: myDatabase
+});
+```
+
+## Properties
+
+### httpServer
+
+```typescript
+public httpServer: Server
+```
+
+The underlying Node.js HTTP server instance. Use this to access low-level server functionality.
+
+### dynamicCorsOrigin
+
+```typescript
+public dynamicCorsOrigin: boolean = true
+```
+
+When `true`, automatically sets the `Access-Control-Allow-Origin` header to match the request's `Origin` header. Set to `false` to use a fixed CORS origin.
+
+### introspection
+
+```typescript
+public introspection: boolean = true
+```
+
+Enables introspection features including:
+- Playground at `/playground`
+- AST JSON at `/ast.json`
+- Generated client code at `/targets/*`
+- Swagger UI at `/swagger` (when REST endpoints exist)
+
+Set to `false` in production to disable these features.
+
+### log
+
+```typescript
+public log: (message: string) => void
+```
+
+Logging function for request information. Default implementation logs to console with timestamps.
+
+```typescript
+server.log = (message) => {
+  myLogger.info(message);
+};
+```
+
+### logError
+
+```typescript
+public logError: (...error: unknown[]) => void
+```
+
+Logging function for errors. Defaults to `console.error`.
+
+```typescript
+server.logError = (...errors) => {
+  myLogger.error(errors);
+};
+```
+
+## Methods
+
+### listen
+
+```typescript
+async listen(port?: number): Promise<void>
+```
+
+Starts the HTTP server on the specified port.
+
+<ParamField path="port" type="number" default="8000">
+  The port number to listen on
+</ParamField>
+
+**Returns:** Promise that resolves when the server is listening
+
+```typescript
+await server.listen(3000);
+console.log("Server started on port 3000");
+```
+
+The method logs:
+- Server address and port
+- Playground URL (if introspection is enabled)
+- Swagger UI URL (if REST endpoints are defined and introspection is enabled)
+
+### close
+
+```typescript
+async close(): Promise<void>
+```
+
+Stops the HTTP server and closes all connections.
+
+**Returns:** Promise that resolves when the server is closed
+
+```typescript
+await server.close();
+```
+
+### addHeader
+
+```typescript
+addHeader(header: string, value: string): void
+```
+
+Adds a global HTTP header that will be sent with all responses.
+
+<ParamField path="header" type="string" required>
+  The header name (case-insensitive)
+</ParamField>
+
+<ParamField path="value" type="string" required>
+  The header value
+</ParamField>
+
+```typescript
+server.addHeader("X-API-Version", "1.0");
+server.addHeader("Access-Control-Allow-Headers", "Authorization");
+```
+
+If the header already exists, the value is appended with a comma separator.
+
+### addHttpHandler
+
+```typescript
+addHttpHandler(
+  method: string,
+  matcher: string | RegExp,
+  handler: (req: IncomingMessage, res: ServerResponse, body: Buffer) => void
+): void
+```
+
+Registers a custom HTTP handler for specific routes.
+
+<ParamField path="method" type="string" required>
+  HTTP method (GET, POST, etc.)
+</ParamField>
+
+<ParamField path="matcher" type="string | RegExp" required>
+  URL path to match (exact string or regular expression)
+</ParamField>
+
+<ParamField path="handler" type="function" required>
+  Handler function receiving request, response, and body buffer
+</ParamField>
+
+```typescript
+server.addHttpHandler("GET", "/custom", (req, res, body) => {
+  res.setHeader("Content-Type", "text/plain");
+  res.write("Custom response");
+  res.end();
+});
+
+// With regex for dynamic routes
+server.addHttpHandler("GET", /^\/api\/v(\d+)\/status$/u, (req, res, body) => {
+  res.setHeader("Content-Type", "application/json");
+  res.write(JSON.stringify({ status: "ok" }));
+  res.end();
+});
+```
+
+### registerHealthCheck
+
+```typescript
+registerHealthCheck(healthCheck: () => Promise<boolean>): void
+```
+
+Registers a health check function that runs when `GET /` is called.
+
+<ParamField path="healthCheck" type="() => Promise<boolean>" required>
+  Async function that returns `true` if healthy, `false` otherwise
+</ParamField>
+
+```typescript
+server.registerHealthCheck(async () => {
+  try {
+    await database.ping();
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+server.registerHealthCheck(async () => {
+  const redisOk = await redis.ping();
+  return redisOk === "PONG";
+});
+```
+
+All registered health checks must pass for the endpoint to return `{"ok": true}` with status 200. If any check fails, returns `{"ok": false}` with status 500.
+
+### ignoreUrlPrefix
+
+```typescript
+ignoreUrlPrefix(urlPrefix: string): void
+```
+
+Configures the server to ignore a URL prefix when routing requests. Useful when deploying behind a reverse proxy.
+
+<ParamField path="urlPrefix" type="string" required>
+  The URL prefix to ignore (e.g., "/api/v1")
+</ParamField>
+
+```typescript
+server.ignoreUrlPrefix("/api/v1");
+// Request to /api/v1/playground will be handled as /playground
+```
+
+### handleRequest
+
+```typescript
+public handleRequest: (req: IncomingMessage, res: ServerResponse) => void
+```
+
+The main request handler function. Use this to integrate with existing HTTP servers or cloud functions.
+
+```typescript
+import express from "express";
+
+const app = express();
+app.use(server.handleRequest);
+
+// Or with vanilla Node.js
+import { createServer } from "http";
+const httpServer = createServer(server.handleRequest);
+
+// Or with Google Cloud Functions
+export const api = server.handleRequest;
+```
+
+## Built-in Endpoints
+
+The server automatically provides several endpoints:
+
+### POST /
+
+Main API endpoint for sdkgen protocol requests.
+
+### GET /
+
+Health check endpoint. Returns:
+
+```json
+{"ok": true}
+```
+
+Runs all registered health checks and returns status 500 if any fail.
+
+### GET /ast.json
+
+Returns the JSON representation of the API AST (when introspection is enabled).
+
+### GET /playground
+
+Interactive API playground (when introspection is enabled).
+
+### GET /swagger
+
+Swagger UI for REST endpoints (when introspection is enabled and REST endpoints exist).
+
+### GET /targets/{platform}/{file}
+
+Generated client code for various platforms (when introspection is enabled):
+
+- `/targets/web/client.ts` - Browser TypeScript client
+- `/targets/node/client.ts` - Node.js TypeScript client
+- `/targets/node/api.ts` - Node.js server code
+- `/targets/android/client.kt` - Android Kotlin client
+- `/targets/ios/client.swift` - iOS Swift client
+- `/targets/flutter/client.dart` - Flutter Dart client
+- `/targets/dotnet/api.cs` - .NET C# server
+- `/targets/dotnet/api.fs` - .NET F# server
+
+### REST Endpoints
+
+Any endpoints defined with `@rest` annotations in your API definition are automatically registered.
+
+## Example: Complete Server Setup
+
+```typescript
+import { SdkgenHttpServer } from "@sdkgen/node-runtime";
+import { api } from "./api";
+import { database } from "./database";
+import { logger } from "./logger";
+
+// Set up extra context
+interface ServerContext {
+  db: typeof database;
+  logger: typeof logger;
+}
+
+const server = new SdkgenHttpServer<ServerContext>(api, {
+  db: database,
+  logger: logger
+});
+
+// Configure logging
+server.log = (message) => logger.info(message);
+server.logError = (...errors) => logger.error(...errors);
+
+// Add custom headers
+server.addHeader("X-API-Version", "2.0");
+
+// Register health checks
+server.registerHealthCheck(async () => {
+  return await database.isHealthy();
+});
+
+// Add custom endpoint
+server.addHttpHandler("GET", "/version", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.write(JSON.stringify({ version: "2.0.0" }));
+  res.end();
+});
+
+// Disable introspection in production
+if (process.env.NODE_ENV === "production") {
+  server.introspection = false;
+}
+
+// Start server
+await server.listen(process.env.PORT || 8000);
+```

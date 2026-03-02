@@ -1,0 +1,167 @@
+---
+title: 'Code Generation Overview'
+description: 'Generate type-safe client and server code from your API definition'
+---
+
+sdkgen automatically generates type-safe code for multiple platforms from a single API definition file. This ensures consistency across your client and server implementations and eliminates manual synchronization.
+
+## How it works
+
+The code generation process follows these steps:
+
+<Steps>
+<Step title="Define your API">
+
+Create an API definition file (`.sdkgen`) that describes your types, operations, and errors.
+
+</Step>
+
+<Step title="Run the generator">
+
+Use the CLI to generate code for your target platform:
+
+```bash
+sdkgen api.sdkgen -o output.ts -t typescript_nodeserver
+```
+
+</Step>
+
+<Step title="Integrate the generated code">
+
+Import and use the generated code in your application. The generated code includes:
+- Type definitions for all custom types
+- API client or server implementation
+- Error classes
+- Runtime type validation
+
+</Step>
+</Steps>
+
+## Available generators
+
+sdkgen supports code generation for multiple platforms:
+
+<CardGroup cols={2}>
+
+<Card title="TypeScript" icon="js" href="/generators/typescript">
+  Node.js server, Node.js client, browser client, and TypeScript interfaces
+</Card>
+
+<Card title="C#" icon="code" href="/generators/csharp">
+  ASP.NET Core server implementation
+</Card>
+
+<Card title="Dart/Flutter" icon="mobile" href="/generators/dart-flutter">
+  Flutter mobile and web client
+</Card>
+
+<Card title="Kotlin" icon="android" href="/generators/kotlin-android">
+  Android client with Kotlin coroutines
+</Card>
+
+<Card title="Swift" icon="apple" href="/generators/swift-ios">
+  iOS client with optional RxSwift support
+</Card>
+
+</CardGroup>
+
+## CLI usage
+
+The basic command structure is:
+
+```bash
+sdkgen [source-file] -o [output-file] -t [target]
+```
+
+### Options
+
+- **source-file**: Path to your `.sdkgen` API definition file
+- **-o, --output**: Path where the generated code will be written
+- **-t, --target**: Target platform and language (see available targets below)
+- **-h, --help**: Display help information
+
+### Available targets
+
+<Tabs>
+  <Tab title="TypeScript">
+    - `typescript_nodeserver` - Node.js server
+    - `typescript_nodeclient` - Node.js client
+    - `typescript_web` - Browser client
+    - `typescript_interfaces` - TypeScript type definitions only
+  </Tab>
+  <Tab title="C#">
+    - `csharp_server` - ASP.NET Core server
+  </Tab>
+  <Tab title="Dart/Flutter">
+    - `flutter` - Dart client for Flutter
+  </Tab>
+  <Tab title="Kotlin">
+    - `kotlin_android` - Android client with callbacks
+    - `kotlin_android_without_callbacks` - Android client without callbacks
+  </Tab>
+  <Tab title="Swift">
+    - `swift_ios` - iOS client
+    - `rxswift_ios` - iOS client with RxSwift extensions
+  </Tab>
+</Tabs>
+
+## What gets generated
+
+Each generator creates code that includes:
+
+### Type definitions
+
+All custom types defined in your API definition are converted to native types:
+- Structs become classes or interfaces
+- Enums become native enums
+- Type aliases are resolved
+
+### API client/server
+
+Depending on the target:
+- **Server generators** create abstract classes with methods you implement
+- **Client generators** create client classes with methods that make HTTP requests
+
+### Error handling
+
+Custom error types from your API definition become native exception or error classes with proper type safety.
+
+### Runtime validation
+
+Generated code includes runtime type checking and validation to ensure data integrity.
+
+## Example workflow
+
+Here's a typical development workflow:
+
+1. Define your API in `api.sdkgen`
+2. Generate the server code:
+   ```bash
+   sdkgen api.sdkgen -o src/api-server.ts -t typescript_nodeserver
+   ```
+3. Generate client code for each platform:
+   ```bash
+   sdkgen api.sdkgen -o web/src/api.ts -t typescript_web
+   sdkgen api.sdkgen -o mobile/lib/api.dart -t flutter
+   sdkgen api.sdkgen -o ios/API.swift -t swift_ios
+   ```
+4. Implement the server methods
+5. Use the generated clients in your applications
+
+<Note>
+  When you update your API definition, regenerate all code to keep everything in sync.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="TypeScript generators" icon="js" href="/generators/typescript">
+  Learn about TypeScript code generation
+</Card>
+
+<Card title="Mobile generators" icon="mobile" href="/generators/dart-flutter">
+  Generate code for mobile platforms
+</Card>
+
+</CardGroup>

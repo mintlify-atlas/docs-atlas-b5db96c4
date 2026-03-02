@@ -1,0 +1,156 @@
+---
+title: REST Endpoints
+description: Learn how to create REST endpoints from your sdkgen functions
+---
+
+In many cases, you want to expose an API for external integrations. The REST format is a universally understood and accepted standard with good tooling across all platforms and languages. In sdkgen, you can use the `@rest` annotation to create REST endpoints linked to your functions.
+
+## Creating a REST Function
+
+To create a REST function, start by creating a normal sdkgen function. Use any arguments, return type, and name that makes sense for your use case. For example:
+
+```sdkgen
+fn getPostsByUser(userId: uuid, since: datetime?, until: datetime?): Post[]
+```
+
+Then add the `@rest` annotation. It must define a method and a path, and can include additional details for headers and body:
+
+```sdkgen
+@rest GET /users/{userId}/posts?{since}&{until}
+fn getPostsByUser(userId: uuid, since: datetime?, until: datetime?): Post[]
+```
+
+Once there is at least one REST endpoint in your application, a Swagger UI will be automatically created with the endpoint description and documentation through `@description` and `@arg` annotations.
+
+If you want your function to be available exclusively as REST, use `@hidden` to hide it from the standard sdkgen client interface.
+
+## Anatomy of `@rest`
+
+The complete syntax:
+
+```
+@rest METHOD /path/to/resource/{arg1}/and/{arg2}?{queryArg1}&{queryArg2} [header Name: {header}] [body {argBody}]
+```
+
+## HTTP Methods
+
+The following HTTP methods are supported: `GET`, `POST`, `PUT`, `DELETE`, and `PATCH`. Examples:
+
+```sdkgen
+@rest GET /status
+fn getStatus(): bool
+
+@rest DELETE /product/{id}
+fn deleteProduct(id: uuid)
+
+@rest POST /product [body {newProduct}]
+fn createProduct(newProduct: Product): Product
+```
+
+## Path Variables
+
+After the method, the second required element of `@rest` is the path (or "endpoint"). This path must start with a `/` and use characters allowed in a URL. The path can include dynamic segments linked to function arguments, like `/product/{id}` where `id` is an argument.
+
+### Supported Types for Path Variables
+
+An argument can be used in a path if it has one of the following types:
+- `bool`, `int`, `uint`, `bigint`, `float`
+- `string`, `date`, `datetime`
+- `money`, `decimal`
+- `cpf`, `cnpj`, `uuid`, `hex`, `base64`
+- enum types
+
+Note that the type cannot be nullable.
+
+Example:
+
+```sdkgen
+@rest GET /stores/{storeId}/products/{id}
+fn getProduct(storeId: uint, id: uint): Product?
+```
+
+A call to `GET /stores/3/products/47` is equivalent to calling `getProduct(3, 47)`.
+
+## Query Parameters
+
+Arguments can also be received as part of the query string (the part of the URL after `?`). For example: `GET /orders?state=open`.
+
+```sdkgen
+@rest GET /stores/{storeId}/orders?{state}&{date}
+fn getOrders(storeId: uint, state: State?, date: date?): Order[]
+```
+
+The order of query parameters is not important. The accepted types are the same as for path variables, except they can be nullable. It's common (but not required) for query parameters to be optional.
+
+## Headers
+
+In a REST API, you may need to receive arguments through headers, especially for authentication:
+
+```sdkgen
+@rest GET /me [header Authorization: {token}]
+fn getCurrentUser(token: base64): User
+```
+
+Allowed types are the same as for path variables, and can be optional. Multiple headers can be specified.
+
+## Request Body
+
+Typically, `POST`, `PUT`, and `PATCH` methods expect a body to be sent in the request, although a body can be sent with any method:
+
+```sdkgen
+type NewProduct {
+  name: string
+}
+
+type Product {
+  id: uuid
+  ...NewProduct
+}
+
+@rest POST /products [body {newProduct}]
+fn createProduct(newProduct: NewProduct): Product
+```
+
+Only one argument can be the request body.
+
+### Content-Type Handling
+
+If the `Content-Type` is `application/json`, the body is parsed according to sdkgen's standard encoding and decoding rules. Otherwise, behavior depends on the argument type:
+
+| Type | Behavior |
+|------|----------|
+| Any nullable type | Argument is considered `null` if body is empty |
+| `bool` | Body must be literally `true` or `false` |
+| `int`, `uint`, `bigint`, `float` | Body must contain only the number, without quotes |
+| `string`, `date`, `datetime`, `money`, `decimal`, `cpf`, `cnpj`, `uuid`, `hex`, `base64` | Body content is interpreted directly, without quotes |
+| `xml`, `bytes`, `html` | Body content is passed as-is |
+| `json` | An arbitrary JSON object is expected |
+| enum | Body must be one of the enum values, without quotes |
+| composite types | Body is parsed according to sdkgen's standard rules |
+
+## Response Handling
+
+### HTTP Status Codes
+
+| Situation | Status Code |
+|-----------|-------------|
+| Success with null return or void return (GET method) | 404 Not Found |
+| Success with null return or void return (other methods) | 204 No Content |
+| Success with any other return type | 200 OK |
+| Error thrown (not Fatal) | 400 Bad Request |
+| Fatal error thrown | 500 Internal Server Error |
+| Unspecified error during processing | 500 Internal Server Error |
+
+You can customize error status codes using the `@statusCode` annotation on error definitions.
+
+### Response Body Encoding
+
+If the request includes an `Accept: application/json` header, the body is generated according to sdkgen's standard encoding rules. Otherwise:
+
+| Type | Behavior |
+|------|----------|
+| `bool`, `int`, `uint`, `float`, `string`, `date`, `datetime`, `money`, `bigint`, `decimal`, `cpf`, `cnpj`, `uuid`, `hex`, `base64` | Value is placed directly in the body without quotes. `Content-Type` is `text/plain` |
+| `html` | Value placed directly in body. `Content-Type` is `text/html` |
+| `xml` | Value placed directly in body. `Content-Type` is `text/xml` |
+| `bytes` | Bytes delivered directly, ideal for file downloads. `Content-Type` is dynamically detected or defaults to `application/octet-stream` |
+| Other types | Body generated according to sdkgen's standard encoding rules |

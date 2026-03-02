@@ -1,0 +1,285 @@
+---
+title: Node.js Server Basics
+description: Getting started with sdkgen Node.js servers
+---
+
+Create type-safe Node.js servers using sdkgen's TypeScript runtime.
+
+## Installation
+
+Install the required packages:
+
+```bash
+npm install @sdkgen/node-runtime
+npm install --save-dev @sdkgen/cli
+```
+
+## Setup
+
+### 1. Define Your API
+
+Create an `api.sdkgen` file:
+
+```sdkgen
+fn getUser(id: string): User
+
+type User {
+  name: string
+  age: uint
+}
+
+error UserNotFound
+```
+
+### 2. Generate Server Code
+
+Add a script to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "sdkgen": "sdkgen src/api.sdkgen -o src/api.ts -t typescript_nodeserver"
+  }
+}
+```
+
+Run the generator:
+
+```bash
+npm run sdkgen
+```
+
+### 3. Implement Function Handlers
+
+Create your server implementation:
+
+```typescript
+import { SdkgenHttpServer } from "@sdkgen/node-runtime";
+import { api, UserNotFound } from "./api";
+
+// Implement your API functions
+api.fn.getUser = async (ctx, { id }) => {
+  if (id === "123") {
+    return {
+      name: "John Doe",
+      age: 30
+    };
+  }
+  throw new UserNotFound("User not found");
+};
+
+// Create and start the server
+const server = new SdkgenHttpServer(api);
+server.listen(8000);
+```
+
+## Generated Code Structure
+
+The generated `api.ts` file exports:
+
+### Type Definitions
+
+All types from your `.sdkgen` file are exported as TypeScript interfaces:
+
+```typescript
+export interface User {
+  name: string;
+  age: number;
+}
+```
+
+Enums are exported as string literal unions:
+
+```typescript
+export type Status = "active" | "inactive" | "pending";
+```
+
+### Error Classes
+
+Custom error classes are generated for each error type:
+
+```typescript
+export class UserNotFound extends SdkgenError {
+  // Can be thrown in your handlers
+}
+```
+
+For errors with data:
+
+```typescript
+export class ValidationError extends SdkgenErrorWithData<{
+  field: string;
+  message: string;
+}> {
+  // Usage: throw new ValidationError("Invalid input", { field: "email", message: "Invalid format" });
+}
+```
+
+### ApiConfig Class and Instance
+
+The `ApiConfig` class contains:
+
+- `ast`: Parsed AST of your API definition
+- `astJson`: JSON representation of the AST
+- `fn`: Object where you assign function implementations
+- `use()`: Method to register middlewares
+
+A pre-configured instance named `api` is exported for convenience.
+
+## Context Object
+
+Every function handler receives a `Context` object as the first parameter:
+
+```typescript
+api.fn.getUser = async (ctx, args) => {
+  // Access context properties
+  console.log(ctx.request.ip);
+  console.log(ctx.request.deviceInfo);
+  
+  // Set response headers
+  ctx.response.headers.set("X-Custom-Header", "value");
+  ctx.response.statusCode = 200;
+  
+  return { name: "John", age: 30 };
+};
+```
+
+### Context.request Properties
+
+<ParamField path="request.name" type="string">
+  The name of the API function being called
+</ParamField>
+
+<ParamField path="request.args" type="Record<string, unknown>">
+  The function arguments passed by the client
+</ParamField>
+
+<ParamField path="request.id" type="string">
+  Unique identifier for this request
+</ParamField>
+
+<ParamField path="request.ip" type="string">
+  Client IP address
+</ParamField>
+
+<ParamField path="request.headers" type="IncomingHttpHeaders">
+  HTTP headers from the request
+</ParamField>
+
+<ParamField path="request.deviceInfo" type="object">
+  Information about the client device:
+  
+  - `id`: Device identifier
+  - `type`: Device type (e.g., "web", "mobile", "api")
+  - `platform`: Platform details
+  - `version`: Client version
+  - `language`: Client language
+  - `timezone`: Client timezone
+  - `fingerprint`: Device fingerprint
+</ParamField>
+
+<ParamField path="request.extra" type="Record<string, unknown>">
+  Extra data from the request (version-specific)
+</ParamField>
+
+<ParamField path="request.query" type="string | null">
+  Query string from the HTTP request
+</ParamField>
+
+<ParamField path="request.version" type="number">
+  Protocol version (1, 2, or 3)
+</ParamField>
+
+<ParamField path="request.files" type="Array<{name: string, contents: Readable}>">
+  Uploaded files (for multipart requests)
+</ParamField>
+
+### Context.response Properties
+
+<ParamField path="response.statusCode" type="number">
+  HTTP status code to return (optional)
+</ParamField>
+
+<ParamField path="response.headers" type="Map<string, string>">
+  Response headers to set
+</ParamField>
+
+## Extra Context
+
+You can add custom properties to the context by passing extra context when creating the server:
+
+```typescript
+interface MyContext {
+  database: Database;
+  currentUser?: User;
+}
+
+const server = new SdkgenHttpServer<MyContext>(api, {
+  database: myDatabase,
+});
+
+// Now available in all handlers
+api.fn.getUser = async (ctx, { id }) => {
+  const user = await ctx.database.findUser(id);
+  return user;
+};
+```
+
+## Error Handling
+
+Throw custom errors using the generated error classes:
+
+```typescript
+import { UserNotFound, ValidationError } from "./api";
+
+api.fn.getUser = async (ctx, { id }) => {
+  if (!id) {
+    throw new ValidationError("ID is required", {
+      field: "id",
+      message: "Cannot be empty"
+    });
+  }
+  
+  const user = await findUser(id);
+  if (!user) {
+    throw new UserNotFound("User not found");
+  }
+  
+  return user;
+};
+```
+
+Use `@throws` annotations to declare which errors a function can throw:
+
+```sdkgen
+@throws(UserNotFound)
+@throws(ValidationError)
+fn getUser(id: string): User
+```
+
+Any error not declared in `@throws` annotations will be converted to a `Fatal` error.
+
+## Using with Existing HTTP Servers
+
+You can integrate sdkgen with existing HTTP servers or cloud functions:
+
+```typescript
+import { SdkgenHttpServer } from "@sdkgen/node-runtime";
+import { createServer } from "http";
+import { api } from "./api";
+
+const sdkgenServer = new SdkgenHttpServer(api);
+
+// With existing HTTP server
+const httpServer = createServer();
+httpServer.on("request", sdkgenServer.handleRequest);
+httpServer.listen(8080);
+
+// With Google Cloud Functions
+exports.api = sdkgenServer.handleRequest;
+```
+
+## Next Steps
+
+- [SdkgenHttpServer API Reference](/server/nodejs-http-server)
+- [Middleware System](/server/nodejs-middlewares)

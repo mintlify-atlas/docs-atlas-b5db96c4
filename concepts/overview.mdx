@@ -1,0 +1,111 @@
+---
+title: "Core Concepts Overview"
+description: "Understanding the fundamental concepts of sdkgen API descriptions"
+---
+
+sdkgen APIs are described in `.sdkgen` files that serve as a contract between frontend and backend. These files define exactly what requests a frontend can make and what responses it can expect, while establishing clear rules for what the backend must handle.
+
+## What is an API Description?
+
+An API description in sdkgen is a declarative contract that:
+
+- Defines the exact types of data that can be sent and received
+- Specifies the functions (endpoints) available in your API
+- Documents possible errors that can occur
+- Serves as living documentation for your API
+
+<Note>
+All data transferred through a sdkgen API must strictly respect the contract defined in the `.sdkgen` file.
+</Note>
+
+## Core Components
+
+Every sdkgen API description consists of three main building blocks:
+
+### 1. Types
+
+Types define the shape and constraints of data in your API. sdkgen provides:
+
+- **Primitive types**: Basic data types like `string`, `int`, `bool`, `uuid`, etc.
+- **Type modifiers**: Make types optional (`?`) or create arrays (`[]`)
+- **Composite types**: Build complex objects with multiple fields
+- **Enums**: Define a fixed set of possible values
+- **Named types**: Reuse type definitions across your API
+
+### 2. Functions
+
+Functions represent the operations your API exposes. Each function has:
+
+- A clear, descriptive name (usually starting with a verb)
+- Zero or more typed arguments
+- An optional return type
+
+```sdkgen
+fn getUser(id: uuid): User
+fn createPost(title: string, content: string): Post
+fn deleteComment(commentId: uuid)
+```
+
+### 3. Errors
+
+Errors define the expected failure modes of your API:
+
+```sdkgen
+error NotFound
+error InvalidArgument
+error Unauthorized
+```
+
+<Warning>
+Any error not explicitly defined in your API description will be converted to a `Fatal` error, which is implicitly available in all sdkgen APIs.
+</Warning>
+
+## Type Grammar
+
+Understanding sdkgen's type system is essential for working with API descriptions. Types can be:
+
+- **Simple**: `string`, `int`, `bool`
+- **Modified**: `string?` (optional), `int[]` (array)
+- **Composed**: `{ name: string, age: uint }`
+- **Named**: `type User { ... }`
+- **Enumerated**: `enum { active inactive pending }`
+
+## File Organization
+
+As your API grows, you can split it across multiple files:
+
+```sdkgen
+import "../user"
+import "./types/common"
+```
+
+<Info>
+Import paths are relative to the current file and should not include the `.sdkgen` extension.
+</Info>
+
+## Why Use API Descriptions?
+
+sdkgen API descriptions provide:
+
+1. **Type Safety**: Automatic validation of all data transfers
+2. **Code Generation**: Generate client and server code in multiple languages
+3. **Documentation**: Your API description serves as authoritative documentation
+4. **Contract Enforcement**: Both client and server must respect the same contract
+5. **Refactoring Safety**: Changes to the API are immediately reflected everywhere
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Description" icon="file-code" href="/concepts/api-description">
+    Learn how to write .sdkgen files
+  </Card>
+  <Card title="Type System" icon="shapes" href="/concepts/types">
+    Explore all available types
+  </Card>
+  <Card title="Functions" icon="function" href="/concepts/functions">
+    Define API operations
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/concepts/errors">
+    Handle errors gracefully
+  </Card>
+</CardGroup>

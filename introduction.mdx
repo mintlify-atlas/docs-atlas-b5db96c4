@@ -1,0 +1,174 @@
+---
+title: "Introduction to sdkgen"
+description: "A powerful toolkit for designing and implementing type-safe APIs with automatic code generation for multiple platforms"
+---
+
+## Welcome to sdkgen
+
+sdkgen is a comprehensive toolkit for designing and implementing rich, type-safe APIs with minimal developer effort. Define your API contract once using a custom DSL, and generate strongly-typed client and server code for multiple platforms automatically.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get up and running with sdkgen in under 5 minutes
+  </Card>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install the CLI and runtime packages for your platform
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api/parser"
+  >
+    Explore the complete API documentation
+  </Card>
+  <Card
+    title="Concepts"
+    icon="book"
+    href="/concepts/overview"
+  >
+    Learn about types, functions, and annotations
+  </Card>
+</CardGroup>
+
+## Simple API Definition
+
+Describe your API using sdkgen's intuitive DSL with strong typing:
+
+```sdkgen
+type Post {
+  id: uuid
+  title: string
+  body: string
+  createdAt: datetime
+  author: {
+    name: string
+  }
+}
+
+fn getPost(id: uuid): Post?
+fn listPosts(limit: uint, offset: uint): Post[]
+fn createPost(title: string, body: string): Post
+```
+
+Generate type-safe server and client code:
+
+```bash
+sdkgen api.sdkgen -o api.ts -t typescript_nodeserver
+```
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Custom DSL with Strong Typing" icon="shield-check">
+    Define your API contract with a clean, type-safe DSL. Built-in support for primitives like `uuid`, `datetime`, `money`, `decimal`, and more. All data is validated on both client and server.
+  </Card>
+  
+  <Card title="Multi-Platform Code Generation" icon="grid">
+    Generate code for Node.js, .NET (C# and F#), Web, Android (Kotlin), iOS (Swift), and Flutter (Dart) from a single API definition.
+  </Card>
+  
+  <Card title="Built-in Validation" icon="circle-check">
+    Automatic validation of all data transferred between client and server. Type-safe guarantees prevent runtime errors and ensure API contract compliance.
+  </Card>
+  
+  <Card title="Interactive Playground" icon="play">
+    Explore and test your API with an interactive playground. Call endpoints, inspect responses, and debug in real-time.
+  </Card>
+  
+  <Card title="Automatic REST & Swagger" icon="browser">
+    Generate REST endpoints with Swagger UI automatically using the `@rest` annotation. Perfect for third-party integrations.
+  </Card>
+  
+  <Card title="Rich Type System" icon="shapes">
+    Support for complex types, optionals, arrays, enums, nested objects, and type composition with spreads. Create reusable type definitions.
+  </Card>
+</CardGroup>
+
+## Complete Example
+
+Here's a complete example showing type definitions, error handling, and function declarations:
+
+```sdkgen
+error NotFound
+error InvalidArgument {
+  argumentName: string
+  reason: string
+}
+
+type User {
+  id: uuid
+  avatar: url?
+  name: string
+  type: enum {
+    guest
+    fullUser
+    admin
+  }
+}
+
+type Post {
+  id: uuid
+  title: string
+  body: string
+  createdAt: datetime
+  author: User
+}
+
+@description Get a user by their unique identifier
+@arg id The unique identifier of the user
+@throws NotFound
+fn getUser(id: uuid): User
+
+@description Get posts by a specific user
+@rest GET /users/{userId}/posts?{since}&{until}
+fn getPostsByUser(
+  userId: uuid,
+  since: datetime?,
+  until: datetime?
+): Post[]
+```
+
+## Why sdkgen?
+
+### Type Safety Everywhere
+
+With sdkgen, your API contract is the single source of truth. Changes to the API definition are immediately reflected in all generated code, catching breaking changes at compile time rather than runtime.
+
+### Minimal Boilerplate
+
+Focus on implementing business logic, not writing serialization code, validation logic, or client libraries. sdkgen handles all the tedious details.
+
+### Protocol Agnostic
+
+While sdkgen uses its own efficient binary protocol by default, you can expose the same functions as REST endpoints with a single annotation. Get the best of both worlds.
+
+### Built for Scale
+
+From small projects to large-scale APIs, sdkgen scales with your needs. Support for imports allows you to split large API definitions across multiple files.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Follow the Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Build your first sdkgen API in minutes
+  </Card>
+  <Card
+    title="Install sdkgen"
+    icon="download"
+    href="/installation"
+  >
+    Set up the CLI and runtime packages
+  </Card>
+</CardGroup>
