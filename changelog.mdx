@@ -85,7 +85,7 @@ Access at: [https://sdkgen.github.io/playground/](https://sdkgen.github.io/playg
 
 In many cases it is necessary for a property to receive more than one data type depending on the situation, for example when a list of events is returned. Until now there was no good way to represent these cases, but now sdkgen supports aggregating additional data in the enum. An example of how this can be used:
 
-```
+```sdkgen
 type Event enum {
   info(msg: string)
   transaction(id: uuid, value: money, date: datetime, description: string)
@@ -104,7 +104,7 @@ Currently this model works in Node.js and on the Web with TypeScript, but is not
 
 Another difficult case to express is when types need to be arbitrarily recursive. For example, observe the case of comments on a post, where a comment can have other comments inside. It is now possible to declare it like this:
 
-```
+```sdkgen
 type Post {
   body: string
   authorId: uuid
@@ -265,13 +265,13 @@ Check it out at: https://sdkgen.github.io
 
 In sdkgen it has always been possible to define error types:
 
-```
+```sdkgen
 error InvalidArgument
 ```
 
 It is now possible to include additional data (of any type) along with an error:
 
-```
+```sdkgen
 error InvalidArgument {
   argumentName: string
   reason: string
@@ -280,13 +280,13 @@ error InvalidArgument {
 
 And the error can be thrown as:
 
-```
+```typescript
 throw new InvalidArgument("Invalid argument!", { argumentName: "amount", reason: "Must be positive" });
 ```
 
 Any type can be used, such as:
 
-```
+```sdkgen
 error NoFunds uint?
 ```
 
