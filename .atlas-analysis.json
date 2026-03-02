@@ -1,0 +1,152 @@
+{
+  "projectType": "framework",
+  "projectName": "sdkgen",
+  "projectDescription": "A framework for designing and implementing strongly-typed APIs with minimal effort",
+  "theme": "aspen",
+  "primaryColor": "#673AB7",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/api-description",
+              "concepts/types",
+              "concepts/functions",
+              "concepts/errors",
+              "concepts/type-composition"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/overview",
+              "cli/commands",
+              "cli/targets"
+            ]
+          },
+          {
+            "group": "Code Generation",
+            "pages": [
+              "generators/overview",
+              "generators/typescript",
+              "generators/csharp",
+              "generators/dart-flutter",
+              "generators/kotlin-android",
+              "generators/swift-ios"
+            ]
+          },
+          {
+            "group": "Server Implementation",
+            "pages": [
+              "server/overview",
+              "server/nodejs",
+              "server/nodejs-http-server",
+              "server/nodejs-middlewares",
+              "server/dotnet"
+            ]
+          },
+          {
+            "group": "Client Implementation",
+            "pages": [
+              "client/overview",
+              "client/browser",
+              "client/nodejs",
+              "client/mobile"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/rest-endpoints",
+              "advanced/swagger",
+              "advanced/annotations",
+              "advanced/dates-times",
+              "advanced/playground",
+              "advanced/compatibility"
+            ]
+          },
+          {
+            "group": "Resources",
+            "pages": [
+              "faq",
+              "changelog"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/parser",
+              "api/ast"
+            ]
+          },
+          {
+            "group": "Server Runtimes",
+            "pages": [
+              "api/node-runtime",
+              "api/dotnet-runtime"
+            ]
+          },
+          {
+            "group": "Client Runtimes",
+            "pages": [
+              "api/browser-runtime",
+              "api/dart-runtime",
+              "api/android-runtime",
+              "api/ios-runtime"
+            ]
+          },
+          {
+            "group": "Generators",
+            "pages": [
+              "api/typescript-generator",
+              "api/csharp-generator",
+              "api/fsharp-generator",
+              "api/dart-generator",
+              "api/kotlin-generator",
+              "api/swift-generator"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Custom DSL for API contract definition with strong typing",
+    "Multi-platform code generation (TypeScript, C#, F#, Dart, Kotlin, Swift)",
+    "Built-in validation and type safety on both client and server",
+    "Interactive playground for API exploration",
+    "Automatic REST endpoints and Swagger generation",
+    "Support for Node.js, .NET, Web, Android, iOS, and Flutter"
+  ],
+  "publicApiSurface": [
+    "@sdkgen/cli - sdkgen command",
+    "@sdkgen/parser - Parser, AstJson, astToJson, jsonToAst",
+    "@sdkgen/node-runtime - SdkgenHttpServer, SdkgenHttpClient, Context, BaseApiConfig",
+    "@sdkgen/browser-runtime - SdkgenHttpClient",
+    "@sdkgen/typescript-generator - generateNodeServerSource, generateNodeClientSource, generateBrowserClientSource",
+    "@sdkgen/csharp-generator - generateCSharpServerSource",
+    "@sdkgen/fsharp-generator - generateFSharpServerSource",
+    "@sdkgen/dart-generator - generateDartClientSource",
+    "@sdkgen/kotlin-generator - generateAndroidClientSource",
+    "@sdkgen/swift-generator - generateSwiftClientSource"
+  ]
+}
